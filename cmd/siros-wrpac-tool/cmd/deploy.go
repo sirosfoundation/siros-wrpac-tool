@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sirosfoundation/siros-wrpac-tool/pkg/keyref"
 	"github.com/sirosfoundation/siros-wrpac-tool/pkg/statuslist"
 	"github.com/sirosfoundation/siros-wrpac-tool/pkg/store"
 	"github.com/sirosfoundation/siros-wrpac-tool/pkg/wrpac"
@@ -36,6 +37,13 @@ func addDirFlag(c *cobra.Command) {
 // ---------------------------------------------------------------- init
 
 var initOpts struct {
+	pkcs11Module string
+	pkcs11Token  string
+	pkcs11Slot   uint
+	pkcs11PINEnv string
+	caKeyLabel   string
+	regKeyLabel  string
+
 	baseURL  string
 	caName   string
 	regName  string
@@ -63,7 +71,26 @@ func runInit(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
+	// With PKCS#11 the keys already exist on the token — this tool certifies
+	// them, it does not create them. Generate an operator's keys with
+	// pkcs11-tool or the HSM's own tooling first.
+	caRef, regRef, err := initKeyRefs()
+	if err != nil {
+		return err
+	}
+
+	var caKey crypto.Signer
+	if caRef.IsPKCS11() {
+		resolved, rerr := caRef.Resolve()
+		if rerr != nil {
+			return rerr
+		}
+		defer func() { _ = resolved.Close() }()
+		caKey = resolved.Signer
+	}
+
 	ca, err := wrpac.NewCA(wrpac.CAOptions{
+		Key:                  caKey,
 		CommonName:           initOpts.caName,
 		Organization:         initOpts.org,
 		Country:              initOpts.country,
@@ -76,13 +103,26 @@ func runInit(_ *cobra.Command, _ []string) error {
 	if err = store.WriteCert(s.CACertPath(), ca.Certificate); err != nil {
 		return err
 	}
-	if err = store.WriteKey(s.CAKeyPath(), mustECDSA(ca.Key)); err != nil {
-		return err
+	if !caRef.IsPKCS11() {
+		if err = store.WriteKey(s.CAKeyPath(), mustECDSA(ca.Key)); err != nil {
+			return err
+		}
+	}
+
+	var regKey crypto.Signer
+	if regRef.IsPKCS11() {
+		resolved, rerr := regRef.Resolve()
+		if rerr != nil {
+			return rerr
+		}
+		defer func() { _ = resolved.Close() }()
+		regKey = resolved.Signer
 	}
 
 	// The registration certificate provider is a distinct trust service under
 	// CIR 2025/848, so it gets its own key rather than reusing the CA's.
 	registrar, err := ca.Issue(wrpac.Request{
+		Key:          regKey,
 		Kind:         wrpac.LegalPerson,
 		Level:        wrpac.Normalised,
 		CommonName:   initOpts.regName,
@@ -98,10 +138,17 @@ func runInit(_ *cobra.Command, _ []string) error {
 	if err = store.WriteCert(s.RegistrarCertPath(), registrar.Certificate); err != nil {
 		return err
 	}
-	if err = store.WriteKey(s.RegistrarKeyPath(), mustECDSA(registrar.Key)); err != nil {
-		return err
+	if !regRef.IsPKCS11() {
+		if err = store.WriteKey(s.RegistrarKeyPath(), mustECDSA(registrar.Key)); err != nil {
+			return err
+		}
 	}
 
+	s.Register.CAKey = caRef
+	s.Register.RegistrarKey = regRef
+	if err = s.Save(); err != nil {
+		return err
+	}
 	if err = publish(s); err != nil {
 		return err
 	}
@@ -109,9 +156,34 @@ func runInit(_ *cobra.Command, _ []string) error {
 	fmt.Printf("initialised deployment in %s\n", s.Dir)
 	fmt.Printf("  base URL   %s\n", s.Register.BaseURL)
 	fmt.Printf("  access CA  %s\n", ca.Certificate.Subject.CommonName)
+	fmt.Printf("    key      %s\n", caRef.Describe())
 	fmt.Printf("  registrar  %s\n", registrar.Certificate.Subject.CommonName)
+	fmt.Printf("    key      %s\n", regRef.Describe())
 	fmt.Printf("\nconfigure %s as the Access CA trust anchor.\n", s.CACertPath())
 	return nil
+}
+
+// initKeyRefs decides where this deployment's two keys live. Without
+// --pkcs11-module both are files inside the deployment; with it, both are on the
+// token and nothing private is ever written to disk.
+func initKeyRefs() (caRef, regRef keyref.Ref, err error) {
+	if initOpts.pkcs11Module == "" {
+		return keyref.Ref{File: filepath.Join(deployDir, "ca.key")},
+			keyref.Ref{File: filepath.Join(deployDir, "registrar.key")}, nil
+	}
+	if initOpts.caKeyLabel == "" || initOpts.regKeyLabel == "" {
+		return caRef, regRef, fmt.Errorf("init: --ca-key-label and --registrar-key-label are required with --pkcs11-module")
+	}
+	base := keyref.PKCS11{
+		Module:     initOpts.pkcs11Module,
+		TokenLabel: initOpts.pkcs11Token,
+		SlotID:     initOpts.pkcs11Slot,
+		PINEnv:     initOpts.pkcs11PINEnv,
+	}
+	caPK, regPK := base, base
+	caPK.KeyLabel = initOpts.caKeyLabel
+	regPK.KeyLabel = initOpts.regKeyLabel
+	return keyref.Ref{PKCS11: &caPK}, keyref.Ref{PKCS11: &regPK}, nil
 }
 
 // ---------------------------------------------------------------- issue
@@ -150,10 +222,11 @@ func runIssue(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	ca, err := loadCA(s)
+	ca, closeCA, err := loadCA(s)
 	if err != nil {
 		return err
 	}
+	defer func() { _ = closeCA() }()
 
 	kind := wrpac.LegalPerson
 	if issueOpts.natural {
@@ -244,10 +317,11 @@ func mintWRPRC(s *store.Store, e *store.Entry) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	regKey, err := store.ReadKey(s.RegistrarKeyPath())
+	regResolved, err := s.RegistrarKeyRef().Resolve()
 	if err != nil {
 		return "", err
 	}
+	defer func() { _ = regResolved.Close() }()
 	caCert, err := store.ReadCert(s.CACertPath())
 	if err != nil {
 		return "", err
@@ -265,7 +339,7 @@ func mintWRPRC(s *store.Store, e *store.Entry) (string, error) {
 		})
 	}
 
-	signer := &wrprc.Signer{Chain: []*x509.Certificate{regCert, caCert}, Key: regKey}
+	signer := &wrprc.Signer{Chain: []*x509.Certificate{regCert, caCert}, Key: regResolved.Signer}
 	return signer.Mint(wrprc.Payload{
 		Name:                 e.Name,
 		Sub:                  e.Identifier,
@@ -349,10 +423,11 @@ var publishCmd = &cobra.Command{
 // It is called after every mutation rather than on demand: a register that has
 // moved on while the CRL has not is worse than no CRL, because it looks current.
 func publish(s *store.Store) error {
-	ca, err := loadCA(s)
+	ca, closeCA, err := loadCA(s)
 	if err != nil {
 		return err
 	}
+	defer func() { _ = closeCA() }()
 
 	var revoked []x509.RevocationListEntry
 	list := statuslist.New(maxInt(s.Register.NextStatusIndex, 8))
@@ -390,14 +465,15 @@ func publish(s *store.Store) error {
 	if err != nil {
 		return err
 	}
-	regKey, err := store.ReadKey(s.RegistrarKeyPath())
+	regResolved, err := s.RegistrarKeyRef().Resolve()
 	if err != nil {
 		return err
 	}
+	defer func() { _ = regResolved.Close() }()
 	token, err := list.Sign(
 		s.Register.BaseURL,
 		s.Register.BaseURL+"/"+statusListFile,
-		regKey,
+		regResolved.Signer,
 		[]*x509.Certificate{regCert, ca.Certificate},
 		time.Hour,
 	)
@@ -463,20 +539,23 @@ var listCmd = &cobra.Command{
 
 // ---------------------------------------------------------------- helpers
 
-func loadCA(s *store.Store) (*wrpac.CA, error) {
+// loadCA opens the CA, resolving its key wherever it lives. The returned close
+// function releases a PKCS#11 session pool and is a no-op for file keys, so
+// callers can always defer it.
+func loadCA(s *store.Store) (*wrpac.CA, func() error, error) {
 	cert, err := store.ReadCert(s.CACertPath())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	key, err := store.ReadKey(s.CAKeyPath())
+	resolved, err := s.CAKeyRef().Resolve()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	return &wrpac.CA{
 		Certificate:          cert,
-		Key:                  key,
+		Key:                  resolved.Signer,
 		CRLDistributionPoint: s.Register.BaseURL + "/" + crlFile,
-	}, nil
+	}, resolved.Close, nil
 }
 
 // mustECDSA narrows a crypto.Signer to the ECDSA key the store persists. Every
@@ -506,6 +585,12 @@ func init() {
 	f.StringVar(&initOpts.org, "organization", "SIROS Foundation", "operator organization name")
 	f.StringVar(&initOpts.country, "country", "SE", "ISO 3166-1 alpha-2 country")
 	f.DurationVar(&initOpts.validity, "validity", 10*365*24*time.Hour, "CA validity")
+	f.StringVar(&initOpts.pkcs11Module, "pkcs11-module", "", "PKCS#11 shared library; keeps both keys on a token")
+	f.StringVar(&initOpts.pkcs11Token, "pkcs11-token", "", "PKCS#11 token label (takes precedence over --pkcs11-slot)")
+	f.UintVar(&initOpts.pkcs11Slot, "pkcs11-slot", 0, "PKCS#11 slot ID")
+	f.StringVar(&initOpts.pkcs11PINEnv, "pkcs11-pin-env", "SIROS_WRPAC_PKCS11_PIN", "environment variable holding the user PIN; the PIN is never persisted")
+	f.StringVar(&initOpts.caKeyLabel, "ca-key-label", "", "CKA_LABEL of the existing CA key on the token")
+	f.StringVar(&initOpts.regKeyLabel, "registrar-key-label", "", "CKA_LABEL of the existing registrar key on the token")
 
 	addDirFlag(issueCmd)
 	g := issueCmd.Flags()

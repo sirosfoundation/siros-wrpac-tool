@@ -24,6 +24,10 @@ type CA struct {
 
 // CAOptions configures NewCA.
 type CAOptions struct {
+	// Key, when set, is used instead of generating one. A PKCS#11 key cannot be
+	// created here — it already exists on the token — so the caller supplies it.
+	Key crypto.Signer
+
 	CommonName           string
 	Organization         string
 	Country              string
@@ -52,9 +56,13 @@ func NewCA(opts CAOptions) (*CA, error) {
 		opts.Validity = 10 * 365 * 24 * time.Hour
 	}
 
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, fmt.Errorf("wrpac: generate CA key: %w", err)
+	key := opts.Key
+	if key == nil {
+		generated, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return nil, fmt.Errorf("wrpac: generate CA key: %w", err)
+		}
+		key = generated
 	}
 	serial, err := serialNumber()
 	if err != nil {

@@ -37,6 +37,10 @@ type Request struct {
 	Email      string
 
 	Validity time.Duration
+
+	// Key, when set, is certified instead of generating a fresh one. Used when
+	// the subject's key lives on a token.
+	Key crypto.Signer
 }
 
 // Issued is a freshly minted WRPAC and its private key.
@@ -72,9 +76,13 @@ func (c *CA) Issue(req Request) (*Issued, error) {
 		return nil, fmt.Errorf("wrpac: parse policy OID %q: %w", policyOID, err)
 	}
 
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, fmt.Errorf("wrpac: generate key: %w", err)
+	key := req.Key
+	if key == nil {
+		generated, genErr := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if genErr != nil {
+			return nil, fmt.Errorf("wrpac: generate key: %w", genErr)
+		}
+		key = generated
 	}
 	serial, err := serialNumber()
 	if err != nil {

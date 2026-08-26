@@ -17,6 +17,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/sirosfoundation/siros-wrpac-tool/pkg/keyref"
 )
 
 // Layout of a deployment directory.
@@ -64,6 +66,29 @@ type Register struct {
 	BaseURL string `json:"base_url"`
 	// Entries is keyed by certificate serial.
 	Entries map[string]*Entry `json:"entries"`
+
+	// CAKey and RegistrarKey say where the deployment's two signing keys live.
+	// Empty means the historical layout: ca.key and registrar.key beside the
+	// register. Neither ever carries a PIN — see keyref.PKCS11.
+	CAKey        keyref.Ref `json:"ca_key,omitempty"`
+	RegistrarKey keyref.Ref `json:"registrar_key,omitempty"`
+}
+
+// CAKeyRef returns the CA key reference, defaulting to the on-disk layout.
+func (s *Store) CAKeyRef() keyref.Ref {
+	if s.Register.CAKey.File == "" && s.Register.CAKey.PKCS11 == nil {
+		return keyref.Ref{File: s.CAKeyPath()}
+	}
+	return s.Register.CAKey
+}
+
+// RegistrarKeyRef returns the registrar key reference, defaulting to the
+// on-disk layout.
+func (s *Store) RegistrarKeyRef() keyref.Ref {
+	if s.Register.RegistrarKey.File == "" && s.Register.RegistrarKey.PKCS11 == nil {
+		return keyref.Ref{File: s.RegistrarKeyPath()}
+	}
+	return s.Register.RegistrarKey
 }
 
 // Store is an open deployment directory.

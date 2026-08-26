@@ -117,6 +117,48 @@ hard-fails on a flat `sub` and silently drops `claim`, yielding an empty
 allowed-attribute set that reads as "may request nothing". The differences are
 recorded in `pkg/wrprc.FieldNotes`.
 
+### LoTE publication
+
+A wallet needs this deployment's Access CA and registration certificate provider
+as trust anchors before it can verify anything issued here.
+
+```sh
+./bin/siros-wrpac-tool lote -d ./deployment --territory SE
+```
+
+The document is built with **g119612's own types**, so there is one
+implementation of the ETSI TS 119 602 schema in the ecosystem rather than two,
+and it is written in the same layout g119612's `publish-lote` pipeline step
+produces — `lote.json` plus a JAdES-B-B `lote.json.jws` alongside it. The
+filename follows the distribution point, matching `publish-lote`'s own naming, so
+output drops straight into a `tsl-tool` pipeline directory and `go-trust`'s
+`pkg/registry/lote` consumes it unchanged.
+
+The sequence number must increase on every republication; it defaults to the
+deployment's CRL number, which already advances on every change.
+
+> The two service type identifiers are expressed under the ETSI 19475 namespace,
+> because TS 119 612's registry has no entries for WRP access and registration
+> certificate providers yet. Revisit when the official identifiers are published.
+
+### Keys on a PKCS#11 token
+
+```sh
+export SIROS_WRPAC_PKCS11_PIN=...
+./bin/siros-wrpac-tool init -d ./deployment \
+  --base-url https://registrar.example.org \
+  --pkcs11-module /usr/lib/softhsm/libsofthsm2.so \
+  --pkcs11-token siros \
+  --ca-key-label wrpac-ca --registrar-key-label wrpac-registrar
+```
+
+The keys must already exist on the token — this tool certifies them, it does not
+create them. With `--pkcs11-module` no private key is ever written to disk.
+
+**The PIN is never persisted.** `register.json` records the module, token and key
+labels, plus the *name* of the environment variable to read the PIN from. A
+register file gets copied, committed and shared; a PIN in it would follow.
+
 ## Revocation
 
 Both mechanisms move together. `revoke` puts the WRPAC serial on the CRL **and**
@@ -135,9 +177,16 @@ CRL should not read that as evidence of revocation.
   `trust-lists` repository and the `g119612` library; this tool should reuse them
   rather than reimplement the schema.
 - **TLS.** `serve` is plain HTTP by design; terminate TLS in front of it.
-- **Key protection.** Keys are PKCS#8 files with `0600` permissions. There is no
-  HSM or PKCS#11 support, which is the main reason this is not a supervised
-  trust service.
+- **Signing an issued party's key on a token.** The CA and registrar keys can
+  live on a PKCS#11 token; keys issued *to* relying parties are still generated
+  in software, since they belong to the party rather than the deployment.
+
+## A note on `replace`
+
+`go.mod` carries a `replace` for `github.com/moov-io/signedxml`, because g119612
+needs a fork that upstream does not carry. Go ignores `replace` directives in
+dependencies, so importing `pkg/lote` from another module means adding the same
+line there.
 
 ## Standards basis
 
