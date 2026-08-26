@@ -15,9 +15,59 @@ import (
 	"encoding/pem"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/sirosfoundation/go-cryptoutil/pkcs11pool"
 )
+
+// PKCS#11 modules are initialised once per process: a second C_Initialize
+// against the same library returns CKR_CRYPTOKI_ALREADY_INITIALIZED. A
+// deployment resolves at least two keys — the CA's and the registrar's — so
+// pools are shared per module and reference counted rather than opened per key.
+var (
+	poolMu sync.Mutex
+	pools  = map[string]*sharedPool{}
+)
+
+type sharedPool struct {
+	pool *pkcs11pool.Pool
+	refs int
+}
+
+// acquirePool returns a pool for the token, opening one only if this is the
+// first reference to that module.
+func acquirePool(key string, cfg pkcs11pool.Config) (*pkcs11pool.Pool, error) {
+	poolMu.Lock()
+	defer poolMu.Unlock()
+
+	if sp, ok := pools[key]; ok {
+		sp.refs++
+		return sp.pool, nil
+	}
+	pool, err := pkcs11pool.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	pools[key] = &sharedPool{pool: pool, refs: 1}
+	return pool, nil
+}
+
+// releasePool drops a reference and finalises the module when the last one goes.
+func releasePool(key string) error {
+	poolMu.Lock()
+	defer poolMu.Unlock()
+
+	sp, ok := pools[key]
+	if !ok {
+		return nil
+	}
+	sp.refs--
+	if sp.refs > 0 {
+		return nil
+	}
+	delete(pools, key)
+	return sp.pool.Close()
+}
 
 // PKCS11 identifies a key on a token.
 //
@@ -102,7 +152,8 @@ func (r Ref) resolvePKCS11() (*Resolved, error) {
 		return nil, fmt.Errorf("keyref: PKCS#11 PIN not found; set %s", pinEnv)
 	}
 
-	pool, err := pkcs11pool.New(pkcs11pool.Config{
+	poolKey := fmt.Sprintf("%s|%s|%d", p.Module, p.TokenLabel, p.SlotID)
+	pool, err := acquirePool(poolKey, pkcs11pool.Config{
 		ModulePath: p.Module,
 		TokenLabel: p.TokenLabel,
 		SlotID:     p.SlotID,
@@ -114,12 +165,20 @@ func (r Ref) resolvePKCS11() (*Resolved, error) {
 
 	signer, err := pkcs11pool.NewSigner(pool, pkcs11pool.KeyByLabel(p.KeyLabel))
 	if err != nil {
-		// Closing here matters: a failed lookup would otherwise leak the
-		// sessions the pool just opened against the token.
-		_ = pool.Close()
+		// Release here: a failed lookup would otherwise hold a reference
+		// forever and keep the module initialised for the process lifetime.
+		_ = releasePool(poolKey)
 		return nil, fmt.Errorf("keyref: find key %q: %w", p.KeyLabel, err)
 	}
-	return &Resolved{Signer: signer, Close: pool.Close}, nil
+
+	var once sync.Once
+	return &Resolved{Signer: signer, Close: func() error {
+		// Closing twice must not drop two references, or an unrelated key's
+		// pool would be finalised out from under it.
+		var err error
+		once.Do(func() { err = releasePool(poolKey) })
+		return err
+	}}, nil
 }
 
 func readPEMKey(path string) (*ecdsa.PrivateKey, error) {

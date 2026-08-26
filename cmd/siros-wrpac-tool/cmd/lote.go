@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/x509"
 	"fmt"
 	"time"
 
@@ -101,7 +102,16 @@ func runLoTE(_ *cobra.Command, _ []string) error {
 		// The registrar signs the list. It is the deployment's publishing trust
 		// service, and using the CA key here would mean the same key both anchors
 		// the list and appears inside it.
-		signer, err = lote.FileSigner(s.RegistrarCertPath(), s.RegistrarKeyPath())
+		//
+		// Resolve through the key reference rather than reading a key file: on a
+		// PKCS#11 deployment there is no key file to read.
+		resolved, rerr := s.RegistrarKeyRef().Resolve()
+		if rerr != nil {
+			return rerr
+		}
+		defer func() { _ = resolved.Close() }()
+
+		signer, err = lote.KeySigner(resolved.Signer, []*x509.Certificate{regCert, caCert})
 		if err != nil {
 			return err
 		}

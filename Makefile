@@ -15,8 +15,11 @@ build: ## Build siros-wrpac-tool binary
 test: ## Run tests
 	go test -v -race ./...
 
-coverage: ## Run tests with coverage
-	go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+test-softhsm: ## Run tests including the SoftHSM PKCS#11 suite
+	go test -v -race -tags softhsm ./...
+
+coverage: ## Run tests with coverage (includes SoftHSM)
+	go test -v -race -tags softhsm -coverprofile=coverage.out -covermode=atomic ./...
 	go tool cover -func=coverage.out
 
 lint: ## Run linter

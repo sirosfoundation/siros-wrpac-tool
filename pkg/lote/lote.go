@@ -12,6 +12,7 @@
 package lote
 
 import (
+	"crypto"
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
@@ -22,7 +23,8 @@ import (
 	"time"
 
 	"github.com/sirosfoundation/g119612/pkg/etsi119602"
-	"github.com/sirosfoundation/g119612/pkg/jws"
+
+	sirosjws "github.com/sirosfoundation/siros-wrpac-tool/pkg/jws"
 )
 
 // Service type identifiers for the two roles a deployment operates.
@@ -182,7 +184,7 @@ func Filename(list *etsi119602.ListOfTrustedEntities) string {
 //
 // The unsigned document is always written, even when signing, because that is
 // what publish-lote does and a pipeline reading the directory expects both.
-func Publish(list *etsi119602.ListOfTrustedEntities, dir string, signer jws.JSONSigner) ([]string, error) {
+func Publish(list *etsi119602.ListOfTrustedEntities, dir string, signer Signer) ([]string, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("lote: create %s: %w", dir, err)
 	}
@@ -213,20 +215,33 @@ func Publish(list *etsi119602.ListOfTrustedEntities, dir string, signer jws.JSON
 	return written, nil
 }
 
-// FileSigner builds a JAdES signer from a certificate and key on disk, the same
-// construction publish-lote uses for its file-based signing path.
-func FileSigner(certPath, keyPath string) (jws.JSONSigner, error) {
-	s, err := jws.NewFileSigner(certPath, keyPath)
-	if err != nil {
-		return nil, fmt.Errorf("lote: build signer: %w", err)
+// KeySigner builds a JAdES-B-B signer over any crypto.Signer, so a LoTE can be
+// signed by a key on a PKCS#11 token as readily as by one in a file.
+func KeySigner(key crypto.Signer, chain []*x509.Certificate) (Signer, error) {
+	if key == nil {
+		return nil, fmt.Errorf("lote: no signing key")
 	}
-	return s, nil
+	if len(chain) == 0 {
+		return nil, fmt.Errorf("lote: no signing certificate chain")
+	}
+	return &keySigner{key: key, chain: chain}, nil
+}
+
+type keySigner struct {
+	key   crypto.Signer
+	chain []*x509.Certificate
+}
+
+func (s *keySigner) Sign(payload []byte) (string, error) {
+	return sirosjws.SignJAdES(payload, s.key, s.chain)
 }
 
 func names(v string) etsi119602.NameSet {
 	return etsi119602.NameSet{{Lang: "en", Value: v}}
 }
 
-// Signer is the signing interface Publish accepts, aliased so callers need not
-// import g119612 directly.
-type Signer = jws.JSONSigner
+// Signer is the signing interface Publish accepts. It matches g119612's
+// jws.JSONSigner, so a signer from either source can be passed in.
+type Signer interface {
+	Sign(payload []byte) (string, error)
+}
