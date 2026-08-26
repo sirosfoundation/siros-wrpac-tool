@@ -30,7 +30,9 @@ coverage.out
 coverage.txt
 coverage.html
 
-# Generated test material — never commit private keys
-/out/
-*.pem
+# Private keys, never. Certificates are public and the git-driven workflow
+# expects issued material to be committable, so *.pem is deliberately not
+# blanket-ignored — only local scratch directories are.
 *.key
+/out/
+/deployment/

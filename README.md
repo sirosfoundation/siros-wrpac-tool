@@ -76,6 +76,53 @@ certificate is `https` and a wallet will refuse to fetch over `http`.
 - **status list indices**, which are allocated once and never reused. Reusing a
   slot would transfer a previous holder's revocation to a new certificate.
 
+### Driving it from a git repository
+
+For anything with more than a couple of clients, keep the registrations in git
+and reconcile from them rather than running `issue` by hand.
+
+```
+clients/
+  example-pid-provider.yaml    the registration
+  example-pid-provider.csr     the client's certificate signing request
+```
+
+```sh
+siros-wrpac-tool apply -d ./deployment --from ./clients --dry-run   # show the plan
+siros-wrpac-tool apply -d ./deployment --from ./clients             # make it so
+```
+
+See [`examples/`](examples/) for a commented spec file.
+
+**The repository is the source of truth; the register is derived from it.** That
+split is the point: a future management UI only ever writes YAML and commits,
+and never touches the deployment's store, so the two can be built and replaced
+independently.
+
+**Clients keep their own keys.** Each spec names a CSR. The deployment certifies
+the public key in it and never holds the private half, so neither the repository
+nor the deployment stores a client secret. The CSR's self-signature is checked
+on load — that is the proof of possession, and skipping it would let anyone have
+a certificate issued over someone else's key.
+
+Reconciliation is by client id (the `id` field, defaulting to the filename stem —
+never change it, it is what ties a file to its register entry). What happens:
+
+| In the repo | In the register | Action |
+| --- | --- | --- |
+| present | absent | issue |
+| changed (incl. a rotated CSR key) | present | re-issue, and revoke what it replaces as `superseded` |
+| `revoked: true` | active | revoke |
+| absent | active | nothing, unless `--prune` |
+
+**Deleting a spec file does not revoke** unless you pass `--prune`. Revocation is
+close to irreversible, and an accidentally deleted file should not take a
+production relying party out of service. Setting `revoked: true` is the
+reversible way to take a client out.
+
+Unknown YAML keys are an error rather than being ignored — a misspelled
+`entitlments:` would otherwise issue a certificate with no entitlements at all.
+
 ### One-shot fixtures
 
 `sandbox` still emits a throwaway set in a single command, for when a test needs

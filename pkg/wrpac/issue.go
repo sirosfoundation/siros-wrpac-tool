@@ -41,9 +41,16 @@ type Request struct {
 	// Key, when set, is certified instead of generating a fresh one. Used when
 	// the subject's key lives on a token.
 	Key crypto.Signer
+
+	// PublicKey, when set, is certified without the CA ever holding the private
+	// half. This is the CSR path: the subject keeps its key and the deployment
+	// stores no secret for it. Takes precedence over Key.
+	PublicKey crypto.PublicKey
 }
 
-// Issued is a freshly minted WRPAC and its private key.
+// Issued is a freshly minted WRPAC, and the private key when the CA generated
+// one. Key is nil on the CSR path — the subject holds it and the deployment
+// never sees it.
 type Issued struct {
 	Certificate *x509.Certificate
 	Key         crypto.Signer
@@ -76,13 +83,25 @@ func (c *CA) Issue(req Request) (*Issued, error) {
 		return nil, fmt.Errorf("wrpac: parse policy OID %q: %w", policyOID, err)
 	}
 
-	key := req.Key
-	if key == nil {
+	// Resolve what is being certified. Preference order matters: a caller that
+	// supplied a public key explicitly does not want a key generated for it.
+	var (
+		key    crypto.Signer
+		public crypto.PublicKey
+	)
+	switch {
+	case req.PublicKey != nil:
+		public = req.PublicKey
+	case req.Key != nil:
+		key = req.Key
+		public = req.Key.Public()
+	default:
 		generated, genErr := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if genErr != nil {
 			return nil, fmt.Errorf("wrpac: generate key: %w", genErr)
 		}
 		key = generated
+		public = generated.Public()
 	}
 	serial, err := serialNumber()
 	if err != nil {
@@ -141,7 +160,7 @@ func (c *CA) Issue(req Request) (*Issued, error) {
 		tmpl.CRLDistributionPoints = []string{c.CRLDistributionPoint}
 	}
 
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, c.Certificate, key.Public(), c.Key)
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, c.Certificate, public, c.Key)
 	if err != nil {
 		return nil, fmt.Errorf("wrpac: create certificate: %w", err)
 	}

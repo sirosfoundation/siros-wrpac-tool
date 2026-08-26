@@ -1,0 +1,36 @@
+# One wallet-relying party. The filename stem is the client id unless `id` is set;
+# it ties this file to its register entry across re-issuance, so never change it.
+name: Example PID Provider
+organization: Example Provider GmbH
+
+# EU-wide unique identifier, ETSI EN 319 412-1 semantic form.
+identifier: LEIXG-529900T8BM49AURSDO55
+country: DE
+
+# At least one contact is required — a WRPAC with an empty subjectAltName is
+# rejected by the profile.
+support_uri: https://pid.example.org/support
+email: support@pid.example.org
+
+# legal (default) or natural; normalised (default) or qualified.
+subject_kind: legal
+assurance: normalised
+
+# The client's certificate signing request, relative to this file. The
+# deployment certifies the public key in it and never holds the private half.
+csr: example-pid-provider.csr
+
+entitlements:
+  - https://uri.etsi.org/19475/Entitlement/PID_Provider
+
+# Only meaningful with a provider entitlement: what this party may issue.
+provides:
+  - vct: urn:eudi:pid:1
+  - doctype: eu.europa.ec.eudi.pid.1
+
+validity: 8760h
+
+# Take the party out of service. Prefer this over deleting the file — deletion
+# only revokes with --prune, deliberately.
+# revoked: true
+# revocation_reason: 4

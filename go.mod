@@ -6,6 +6,7 @@ require (
 	github.com/sirosfoundation/g119612 v0.7.0
 	github.com/sirosfoundation/go-cryptoutil/pkcs11pool v0.1.0
 	github.com/spf13/cobra v1.10.2
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

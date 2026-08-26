@@ -36,6 +36,14 @@ const (
 type Entry struct {
 	// Serial is the certificate serial in hex, and names the file under issued/.
 	Serial string `json:"serial"`
+	// ClientID ties this entry to a spec file when the deployment is driven
+	// declaratively. Empty for entries created by `issue` directly.
+	ClientID string `json:"client_id,omitempty"`
+	// SpecFingerprint is the spec hash this entry was issued from. Reconciliation
+	// compares against it to decide whether re-issuance is needed.
+	SpecFingerprint string `json:"spec_fingerprint,omitempty"`
+	// Superseded marks an entry replaced by a later issuance for the same client.
+	Superseded bool `json:"superseded,omitempty"`
 	// Identifier is the EU-wide unique WRP identifier.
 	Identifier string `json:"identifier"`
 	Name       string `json:"name"`
@@ -102,7 +110,7 @@ func Open(dir string) (*Store, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, fileDB))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("store: %s is not an initialised deployment (run `ca init` first)", dir)
+			return nil, fmt.Errorf("store: %s is not an initialised deployment (run `siros-wrpac-tool init -d %s` first)", dir, dir)
 		}
 		return nil, fmt.Errorf("store: read register: %w", err)
 	}
@@ -146,6 +154,16 @@ func (s *Store) Save() error {
 	}
 	if err := os.Rename(tmp, final); err != nil {
 		return fmt.Errorf("store: replace register: %w", err)
+	}
+	return nil
+}
+
+// ActiveByClient returns the current, non-superseded entry for a client id.
+func (s *Store) ActiveByClient(clientID string) *Entry {
+	for _, e := range s.Register.Entries {
+		if e.ClientID == clientID && !e.Superseded {
+			return e
+		}
 	}
 	return nil
 }
