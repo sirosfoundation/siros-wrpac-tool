@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -78,10 +79,10 @@ func runSandbox(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	if err := writeCert(filepath.Join(out, "ca.pem"), ca.Certificate); err != nil {
+	if err = writeCert(filepath.Join(out, "ca.pem"), ca.Certificate); err != nil {
 		return err
 	}
-	if err := writeKey(filepath.Join(out, "ca.key"), ca.Key.(*ecdsa.PrivateKey)); err != nil {
+	if err = writeKey(filepath.Join(out, "ca.key"), ca.Key); err != nil {
 		return err
 	}
 
@@ -98,10 +99,10 @@ func runSandbox(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	if err := writeCert(filepath.Join(out, "wrpac.pem"), issued.Certificate); err != nil {
+	if err = writeCert(filepath.Join(out, "wrpac.pem"), issued.Certificate); err != nil {
 		return err
 	}
-	if err := writeKey(filepath.Join(out, "wrpac.key"), issued.Key.(*ecdsa.PrivateKey)); err != nil {
+	if err = writeKey(filepath.Join(out, "wrpac.key"), issued.Key); err != nil {
 		return err
 	}
 
@@ -109,7 +110,7 @@ func runSandbox(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(out, "crl.der"), crl, 0o644); err != nil {
+	if err = os.WriteFile(filepath.Join(out, "crl.der"), crl, 0o644); err != nil {
 		return fmt.Errorf("write CRL: %w", err)
 	}
 
@@ -127,7 +128,7 @@ func runSandbox(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	if err := writeCert(filepath.Join(out, "registrar.pem"), registrar.Certificate); err != nil {
+	if err = writeCert(filepath.Join(out, "registrar.pem"), registrar.Certificate); err != nil {
 		return err
 	}
 
@@ -153,7 +154,7 @@ func runSandbox(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(out, "wrprc.jwt"), []byte(token+"\n"), 0o644); err != nil {
+	if err = os.WriteFile(filepath.Join(out, "wrprc.jwt"), []byte(token+"\n"), 0o644); err != nil {
 		return fmt.Errorf("write WRPRC: %w", err)
 	}
 
@@ -175,8 +176,12 @@ func writeCert(path string, cert *x509.Certificate) error {
 
 // writeKey writes a private key with 0600 permissions. These are test keys, but
 // a tool that mints them should not be the reason a key ends up world-readable.
-func writeKey(path string, key *ecdsa.PrivateKey) error {
-	der, err := x509.MarshalPKCS8PrivateKey(key)
+func writeKey(path string, key crypto.Signer) error {
+	priv, ok := key.(*ecdsa.PrivateKey)
+	if !ok {
+		return fmt.Errorf("write %s: expected an ECDSA key, got %T", path, key)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(priv)
 	if err != nil {
 		return fmt.Errorf("marshal key: %w", err)
 	}

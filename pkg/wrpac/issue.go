@@ -123,9 +123,9 @@ func (c *CA) Issue(req Request) (*Issued, error) {
 		EmailAddresses:        nonEmpty(req.Email),
 	}
 	if req.SupportURI != "" {
-		u, err := url.Parse(req.SupportURI)
-		if err != nil {
-			return nil, fmt.Errorf("wrpac: parse support URI: %w", err)
+		u, parseErr := url.Parse(req.SupportURI)
+		if parseErr != nil {
+			return nil, fmt.Errorf("wrpac: parse support URI: %w", parseErr)
 		}
 		tmpl.URIs = []*url.URL{u}
 	}
