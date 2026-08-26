@@ -1,0 +1,18 @@
+# Local run of a small-scale registrar.
+#
+# The deployment volume holds the CA and the register; it must persist, because
+# the CA key is the trust anchor and the CRL number has to keep increasing.
+services:
+  registrar:
+    build:
+      context: .
+      args:
+        VERSION: dev
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./deployment:/data/deployment
+      - ./examples/clients:/data/clients:ro
+    # serve publishes plain HTTP; put TLS in front of it in anything real, since
+    # the base URL burned into issued certificates is https.
+    command: ["serve", "-d", "/data/deployment", "--addr", "0.0.0.0:8080"]

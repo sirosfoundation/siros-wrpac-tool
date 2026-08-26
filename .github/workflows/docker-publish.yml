@@ -1,0 +1,32 @@
+name: Build and Publish Docker Image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v[0-9]+.[0-9]+.[0-9]+*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: 'Git ref to build (branch, tag, or SHA)'
+        required: false
+        default: 'main'
+      image_tag:
+        description: 'Custom image tag (leave empty for standard policy)'
+        required: false
+        default: ''
+
+permissions: read-all
+
+jobs:
+  docker:
+    uses: sirosfoundation/.github/.github/workflows/docker-build-push.yml@main
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    with:
+      image-name: sirosfoundation/siros-wrpac-tool
+      custom-ref: ${{ github.event_name == 'workflow_dispatch' && inputs.git_ref || '' }}
+      custom-tag: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || '' }}

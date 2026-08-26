@@ -235,6 +235,21 @@ needs a fork that upstream does not carry. Go ignores `replace` directives in
 dependencies, so importing `pkg/lote` from another module means adding the same
 line there.
 
+## Docker
+
+```sh
+docker build -t siros-wrpac-tool .
+docker compose up          # serves a registrar on :8080 from ./deployment
+```
+
+The image is statically linked but keeps cgo, because PKCS#11 needs it. SoftHSM
+is installed so a deployment can be exercised without real hardware; for a
+production token, mount the vendor's PKCS#11 module and point
+`--pkcs11-module` at it.
+
+`/data/deployment` must be a persistent volume — it holds the CA key, the CRL
+number and the status list indices.
+
 ## Standards basis
 
 - ETSI TS 119 411-8 V1.1.1 (2025-10) — WRPAC certificate policy
