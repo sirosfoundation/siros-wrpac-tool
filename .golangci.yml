@@ -1,0 +1,39 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+  tests: false
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/sirosfoundation/siros-wrpac-tool
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - misspell
+    - unconvert
+    - errorlint
+    - bodyclose
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+
+  exclusions:
+    rules:
+      - linters: [errcheck]
+        text: "Error return value of .*(Close|Sync|Flush)"
