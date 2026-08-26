@@ -1,7 +1,8 @@
 # siros-wrpac-tool
 
-Development tooling that mints the two certificates identifying a wallet-relying
-party to an EUDI Wallet:
+A Registrar and Access CA for EUDI wallet-relying party certificates. It runs
+small-scale deployments as well as one-shot test fixtures, and mints the two
+certificates that identify a wallet-relying party to an EUDI Wallet:
 
 - a **WRPAC** — Wallet-Relying Party Access Certificate, an X.509 certificate
   following the ETSI TS 119 411-8 profile
@@ -24,33 +25,65 @@ This tool is the missing Registrar and Access CA.
 
 ## Usage
 
+### Run a deployment
+
 ```sh
 make build
-./bin/siros-wrpac-tool sandbox --out ./out
+
+# once — creates the Access CA and the registration certificate provider
+./bin/siros-wrpac-tool init -d ./deployment --base-url https://registrar.example.org
+
+# register a party and mint both of its certificates
+./bin/siros-wrpac-tool issue -d ./deployment \
+  --name "Example PID Provider" --organization "Example Provider GmbH" \
+  --identifier LEIXG-529900T8BM49AURSDO55 \
+  --support-uri https://example.org/support \
+  --entitlement https://uri.etsi.org/19475/Entitlement/PID_Provider \
+  --vct urn:eudi:pid:1 --doctype eu.europa.ec.eudi.pid.1
+
+./bin/siros-wrpac-tool list -d ./deployment
+./bin/siros-wrpac-tool revoke -d ./deployment <serial>
+./bin/siros-wrpac-tool serve -d ./deployment --addr :8080
 ```
 
-`sandbox` writes a complete, self-consistent set:
+`siros-wrpac-tool entitlements` prints the accepted `--entitlement` URIs and
+marks the four that may carry `provides_attestations`.
 
-| File | What it is |
+### What a deployment holds
+
+| Path | What it is |
 | --- | --- |
 | `ca.pem` / `ca.key` | Access CA — configure `ca.pem` as the trust anchor |
-| `wrpac.pem` / `wrpac.key` | the relying party's access certificate; sign Issuer Metadata with this key |
-| `registrar.pem` | the registration certificate provider's certificate |
-| `wrprc.jwt` | the registration certificate (`rc-wrp+jwt`) |
-| `crl.der` | an empty CRL |
+| `registrar.pem` / `registrar.key` | the registration certificate provider |
+| `register.json` | the register: identifiers, entitlements, status indices, revocations |
+| `issued/<serial>.pem` | every certificate issued |
+| `issued/<serial>.d/` | the party's own material: `wrpac.pem`, `wrpac.key`, `wrprc.jwt` |
+| `public/` | what `serve` publishes |
 
-Flags select the subject and what it is registered to issue:
+`serve` exposes `/crl.der`, `/status-list.jwt`, `/register.json` and `/ca.pem`
+with the media types their consumers expect. It speaks plain HTTP — put it
+behind a reverse proxy, because the base URL burned into every issued
+certificate is `https` and a wallet will refuse to fetch over `http`.
+
+### Deployment state that must be preserved
+
+`init` refuses to run twice against the same directory. Three things in
+`register.json` cannot be regenerated:
+
+- the **CA key**, which is the trust anchor relying parties have configured;
+- the **CRL number**, which RFC 5280 requires to increase — a deployment that
+  restarted and began again at 1 would have its CRLs ignored as stale;
+- **status list indices**, which are allocated once and never reused. Reusing a
+  slot would transfer a previous holder's revocation to a new certificate.
+
+### One-shot fixtures
+
+`sandbox` still emits a throwaway set in a single command, for when a test needs
+material rather than a running registrar.
 
 ```sh
-./bin/siros-wrpac-tool sandbox \
-  --entitlement https://uri.etsi.org/19475/Entitlement/QEAA_Provider \
-  --vct urn:eudi:ehic:1 \
-  --identifier LEIXG-529900T8BM49AURSDO55
+./bin/siros-wrpac-tool sandbox --out ./out
 ```
-
-The generated WRPAC is accepted by `go-trust`'s own
-`rpcert.WRPACProfile.ValidateCredential`, which is the bar the plan sets for this
-tool.
 
 ## What the profile enforces
 
@@ -84,6 +117,16 @@ hard-fails on a flat `sub` and silently drops `claim`, yielding an empty
 allowed-attribute set that reads as "may request nothing". The differences are
 recorded in `pkg/wrprc.FieldNotes`.
 
+## Revocation
+
+Both mechanisms move together. `revoke` puts the WRPAC serial on the CRL **and**
+sets the WRPRC's status list bit, because revoking only one leaves the party
+usable through the other.
+
+The CRL is published even when nothing is revoked. "Nothing is revoked" is a
+different statement from "no CRL available", and a consumer that cannot fetch a
+CRL should not read that as evidence of revocation.
+
 ## Not yet implemented
 
 - **LoTE publication.** Access CA and registration-certificate-provider trust
@@ -91,10 +134,10 @@ recorded in `pkg/wrprc.FieldNotes`.
   `go-trust`'s `pkg/registry/lote` already consumes. That format is owned by the
   `trust-lists` repository and the `g119612` library; this tool should reuse them
   rather than reimplement the schema.
-- **Status list publication.** `wrprc.jwt` carries a `status.status_list`
-  reference, but nothing serves the list yet.
-- **Revocation of a minted certificate.** `CreateCRL` accepts entries; there is
-  no command to revoke a previously issued certificate and republish.
+- **TLS.** `serve` is plain HTTP by design; terminate TLS in front of it.
+- **Key protection.** Keys are PKCS#8 files with `0600` permissions. There is no
+  HSM or PKCS#11 support, which is the main reason this is not a supervised
+  trust service.
 
 ## Standards basis
 
