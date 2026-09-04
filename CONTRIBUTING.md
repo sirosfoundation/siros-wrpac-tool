@@ -2,7 +2,8 @@
 
 ## Workflow
 
-`main` is protected. Every change goes through a pull request, including small
+`main` is protected and the rule applies to administrators too, so there is no
+path that bypasses it. Every change goes through a pull request, including small
 ones — the diff and its checks are the review surface.
 
 ```sh
