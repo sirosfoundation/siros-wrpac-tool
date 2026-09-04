@@ -108,20 +108,30 @@ func (c *CA) Issue(req Request) (*Issued, error) {
 		return nil, err
 	}
 
+	// The two subject profiles are disjoint, and EN 319 412-3 LEG-4.2.1-1 says so
+	// explicitly: for a legal person, clause 4.2.4 of EN 319 412-2 shall not
+	// apply. So the identifier goes in a different attribute depending on which
+	// profile is in force, and never in both.
 	subject := pkix.Name{
 		CommonName: req.CommonName,
 		Country:    nonEmpty(req.Country),
-		// EN 319 412-3 clause 4.2.1: the identifier goes in
-		// organizationIdentifier (2.5.4.97). It is deliberately not also written
-		// to serialNumber — see the note on oidOrganizationIdentifier.
-		ExtraNames: []pkix.AttributeTypeAndValue{
-			{Type: oidOrganizationIdentifier, Value: req.Identifier},
-		},
 	}
 	switch req.Kind {
 	case LegalPerson:
+		// EN 319 412-3 LEG-4.2.1-2: countryName, organizationName,
+		// organizationIdentifier and commonName.
 		subject.Organization = nonEmpty(req.Organization)
+		subject.ExtraNames = []pkix.AttributeTypeAndValue{
+			{Type: oidOrganizationIdentifier, Value: req.Identifier},
+		}
 	case NaturalPerson:
+		// EN 319 412-2 NAT-4.2.4-1: countryName, givenName and/or surname (or a
+		// pseudonym), and commonName. NAT-4.2.4-2 puts the identifier in
+		// serialNumber when those are not enough to make the subject unique —
+		// which for a wallet-relying party they are not, since the EU-wide
+		// identifier is the whole point. organizationIdentifier is a legal
+		// person attribute and has no business on a natural person.
+		subject.SerialNumber = req.Identifier
 		if req.GivenName != "" {
 			subject.ExtraNames = append(subject.ExtraNames,
 				pkix.AttributeTypeAndValue{Type: asn1.ObjectIdentifier{2, 5, 4, 42}, Value: req.GivenName})

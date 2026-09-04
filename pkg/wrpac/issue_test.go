@@ -141,3 +141,55 @@ func TestCreateCRLIsPublishableWhenEmpty(t *testing.T) {
 		t.Errorf("CRL signature does not verify against the CA: %v", err)
 	}
 }
+
+// EN 319 412-2 and EN 319 412-3 are disjoint profiles: LEG-4.2.1-1 disapplies
+// the natural-person subject clause for legal persons. The identifier therefore
+// lands in a different attribute per profile, and never in both.
+func TestNaturalPersonUsesSerialNumberNotOrganizationIdentifier(t *testing.T) {
+	ca := testCA(t)
+	req := legalRequest()
+	req.Kind = NaturalPerson
+	req.Organization = ""
+	req.GivenName = "Ada"
+	req.Surname = "Lovelace"
+
+	issued, err := ca.Issue(req)
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	if got := issued.Certificate.Subject.SerialNumber; got != req.Identifier {
+		t.Errorf("serialNumber = %q, want the identifier (NAT-4.2.4-2)", got)
+	}
+	if got := subjectAttr(issued.Certificate, oidOrganizationIdentifier); got != "" {
+		t.Errorf("organizationIdentifier = %q, want it absent — it is a legal person attribute", got)
+	}
+	if got := subjectAttr(issued.Certificate, asn1.ObjectIdentifier{2, 5, 4, 42}); got != "Ada" {
+		t.Errorf("givenName = %q, want Ada", got)
+	}
+	if got := subjectAttr(issued.Certificate, asn1.ObjectIdentifier{2, 5, 4, 4}); got != "Lovelace" {
+		t.Errorf("surname = %q, want Lovelace", got)
+	}
+}
+
+// The legal person profile is the mirror image: organizationIdentifier carries
+// the identifier and serialNumber stays empty.
+func TestLegalPersonCarriesTheMandatoryAttributes(t *testing.T) {
+	ca := testCA(t)
+	issued, err := ca.Issue(legalRequest())
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	// LEG-4.2.1-2: countryName, organizationName, organizationIdentifier, commonName.
+	if len(issued.Certificate.Subject.Country) == 0 {
+		t.Error("countryName missing")
+	}
+	if len(issued.Certificate.Subject.Organization) == 0 {
+		t.Error("organizationName missing")
+	}
+	if subjectAttr(issued.Certificate, oidOrganizationIdentifier) == "" {
+		t.Error("organizationIdentifier missing")
+	}
+	if issued.Certificate.Subject.CommonName == "" {
+		t.Error("commonName missing")
+	}
+}

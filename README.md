@@ -151,9 +151,15 @@ A WRPRC is likewise checked before signing:
 
 ## Two conformance notes
 
-**`organizationIdentifier` only.** ETSI EN 319 412-3 clause 4.2.1 requires
-`organizationIdentifier` (OID 2.5.4.97) for legal persons, and that is the only
-place this tool writes it.
+**One identifier attribute per profile.** EN 319 412-2 and EN 319 412-3 are
+disjoint — `LEG-4.2.1-1` explicitly disapplies the natural-person subject clause
+for legal persons — so the identifier lands in a different attribute depending on
+which profile applies, and never in both:
+
+| Profile | Attribute | Rule |
+| --- | --- | --- |
+| Legal person | `organizationIdentifier` (2.5.4.97) | EN 319 412-3 `LEG-4.2.1-2` |
+| Natural person | `serialNumber` (2.5.4.5) | EN 319 412-2 `NAT-4.2.4-2` |
 
 Releases before this one also duplicated it into `Subject.SerialNumber`
 (2.5.4.5), because `go-trust`'s extractor read that attribute. go-trust #138
