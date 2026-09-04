@@ -31,7 +31,8 @@ make build
 ./bin/siros-wrpac-tool apply -d ./deployment --from ./clients --dry-run
 ./bin/siros-wrpac-tool apply -d ./deployment --from ./clients
 
-./bin/siros-wrpac-tool lote   -d ./deployment      # publish trust anchors
+./bin/siros-wrpac-tool lote   -d ./deployment      # publish trust anchors (TS 119 602)
+./bin/siros-wrpac-tool tsl    -d ./deployment      # the same, as a TS 119 612 XML list
 ./bin/siros-wrpac-tool revoke -d ./deployment <serial>
 ./bin/siros-wrpac-tool serve  -d ./deployment --addr :8080
 ```
@@ -101,14 +102,27 @@ later. Two rules that are easy to get wrong:
   `organizationIdentifier` (2.5.4.97) for a legal person and `serialNumber`
   (2.5.4.5) for a natural person — never both. Requires go-trust **v0.20.0+**,
   which reads 2.5.4.97.
-- **LoTE `ServiceStatus` must be absent** outside the PuB-EAA profile: presence
-  in the list *is* the trust statement. Output is built from g119612's own types
-  and written in `publish-lote`'s layout, so it drops into a `tsl-tool` pipeline
-  directory unchanged.
+- **`ServiceStatus` is forbidden in a LoTE and required in a TSL.** Outside the
+  PuB-EAA profile, presence in a LoTE *is* the trust statement; every TS 119 612
+  service carries an explicit status URI instead. The two commands publish the
+  same anchors and must not be made to agree here.
+- **A TSL needs its default namespace bound.** Child elements are unprefixed, so
+  without `xmlns` on the root they land in no namespace and a consumer looking in
+  the 02231 namespace finds an empty list — a document that round-trips through
+  its own parser and is unreadable by anything else.
+
+Output is built from g119612's own types. The LoTE is written in `publish-lote`'s
+layout, so it drops into a `tsl-tool` pipeline directory unchanged; the TSL is a
+single file, because its XMLDSig signature is enveloped rather than detached.
 
 `go.mod` carries a `replace` for `moov-io/signedxml` that g119612 needs. Go
-ignores `replace` in dependencies, so importing `pkg/lote` elsewhere needs the
-same line.
+ignores `replace` in dependencies, so importing `pkg/lote` or `pkg/tsl` elsewhere
+needs the same line. Most consumers should not import either — prefer go-trust's
+AuthZEN API over hand-written trust evaluation.
+
+TSL signatures are produced here rather than by signedxml's own signer, whose
+algorithm table has ECDSA disabled; its exclusive canonicalization *is* used,
+since that is the part that must agree byte for byte with every verifier.
 
 ## Known limits
 
