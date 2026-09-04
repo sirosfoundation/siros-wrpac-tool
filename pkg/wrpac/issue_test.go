@@ -2,6 +2,8 @@ package wrpac
 
 import (
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"testing"
 	"time"
 )
@@ -40,8 +42,15 @@ func TestIssueProducesConformantWRPAC(t *testing.T) {
 	if issued.Certificate.KeyUsage&x509.KeyUsageContentCommitment == 0 {
 		t.Error("keyUsage is missing nonRepudiation")
 	}
-	if got := issued.Certificate.Subject.SerialNumber; got != legalRequest().Identifier {
-		t.Errorf("serialNumber = %q, want the WRP identifier", got)
+	// EN 319 412-3 puts the identifier in organizationIdentifier (2.5.4.97).
+	// It must not also appear in serialNumber: duplicating it was a workaround
+	// for a go-trust extractor bug fixed in v0.20.0, and leaving it would keep
+	// two sources of truth for the same value.
+	if got := subjectAttr(issued.Certificate, oidOrganizationIdentifier); got != legalRequest().Identifier {
+		t.Errorf("organizationIdentifier = %q, want the WRP identifier", got)
+	}
+	if got := issued.Certificate.Subject.SerialNumber; got != "" {
+		t.Errorf("serialNumber = %q, want it empty — the identifier belongs in organizationIdentifier", got)
 	}
 	// The certificate must chain to the CA that issued it.
 	pool := x509.NewCertPool()
@@ -49,6 +58,25 @@ func TestIssueProducesConformantWRPAC(t *testing.T) {
 	if _, err := issued.Certificate.Verify(x509.VerifyOptions{Roots: pool}); err != nil {
 		t.Errorf("chain verification failed: %v", err)
 	}
+}
+
+// subjectAttr returns the value of a subject attribute by OID, reading the raw
+// RDN sequence because crypto/x509 does not surface non-standard attributes.
+func subjectAttr(cert *x509.Certificate, oid asn1.ObjectIdentifier) string {
+	var rdns pkix.RDNSequence
+	if _, err := asn1.Unmarshal(cert.RawSubject, &rdns); err != nil {
+		return ""
+	}
+	for _, rdn := range rdns {
+		for _, atv := range rdn {
+			if atv.Type.Equal(oid) {
+				if s, ok := atv.Value.(string); ok {
+					return s
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func TestIssueRequiresContactInSAN(t *testing.T) {

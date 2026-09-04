@@ -111,11 +111,9 @@ func (c *CA) Issue(req Request) (*Issued, error) {
 	subject := pkix.Name{
 		CommonName: req.CommonName,
 		Country:    nonEmpty(req.Country),
-		// See the note on oidOrganizationIdentifier: the identifier is written
-		// to serialNumber (2.5.4.5) as well as organizationIdentifier (2.5.4.97)
-		// so both the standards-conformant reading and go-trust's current
-		// extractor resolve the same value.
-		SerialNumber: req.Identifier,
+		// EN 319 412-3 clause 4.2.1: the identifier goes in
+		// organizationIdentifier (2.5.4.97). It is deliberately not also written
+		// to serialNumber — see the note on oidOrganizationIdentifier.
 		ExtraNames: []pkix.AttributeTypeAndValue{
 			{Type: oidOrganizationIdentifier, Value: req.Identifier},
 		},

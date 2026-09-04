@@ -151,12 +151,15 @@ A WRPRC is likewise checked before signing:
 
 ## Two conformance notes
 
-**`organizationIdentifier` vs `serialNumber`.** ETSI EN 319 412-3 clause 4.2.1
-requires `organizationIdentifier` (OID 2.5.4.97) for legal persons. `go-trust`'s
-`rpcert.WRPACProfile.ExtractIdentity` currently reads `Subject.SerialNumber`
-(2.5.4.5) and reports it as `organization_identifier`. Until that is corrected,
-issued certificates carry the identifier in **both** attributes so that a
-standards-conformant consumer and the current extractor resolve the same value.
+**`organizationIdentifier` only.** ETSI EN 319 412-3 clause 4.2.1 requires
+`organizationIdentifier` (OID 2.5.4.97) for legal persons, and that is the only
+place this tool writes it.
+
+Releases before this one also duplicated it into `Subject.SerialNumber`
+(2.5.4.5), because `go-trust`'s extractor read that attribute. go-trust #138
+fixed this in **v0.20.0** — which also fixed a second site where `subject_type`
+keyed off the same attribute and misclassified a conformant legal person as a
+natural person. **Consumers must be on go-trust v0.20.0 or later.**
 
 **V1.2.1 field spellings.** This tool emits TS 119 475 **V1.2.1**. `go-trust`
 models V1.1.1 and will mis-parse a V1.2.1 document — most consequentially it
@@ -227,6 +230,14 @@ CRL should not read that as evidence of revocation.
 - **Signing an issued party's key on a token.** The CA and registrar keys can
   live on a PKCS#11 token; keys issued *to* relying parties are still generated
   in software, since they belong to the party rather than the deployment.
+- **Relying Party Services.** ARF v3.0.0 and its TS5 model a relying party as
+  having a `services` array, each with an optional `serviceIdentifier`, and bind
+  the registration certificate to the access certificate by identifier *and*
+  service identifier. This tool models one service per party, which TS5 permits
+  when the party has a single service and no intermediary — but multi-service
+  parties and intermediary relationships cannot be expressed. ETSI TS 119 475
+  v1.2.1 has no service identifier field at all, so there is currently nowhere
+  standards-defined to put one in the WRPRC.
 
 ## A note on `replace`
 

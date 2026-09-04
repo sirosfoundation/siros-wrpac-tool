@@ -42,12 +42,15 @@ var PolicyOIDs = []string{
 
 // Subject attribute OIDs used by the WRPAC profile.
 //
-// NOTE: ETSI EN 319 412-3 clause 4.2.1 requires organizationIdentifier
-// (2.5.4.97) for legal persons. go-trust's rpcert.WRPACProfile.ExtractIdentity
-// currently reads Subject.SerialNumber (2.5.4.5) and reports it as
-// "organization_identifier". Until that is corrected (plan track A1), issued
-// certificates carry the identifier in BOTH attributes so that a
-// standards-conformant consumer and the current go-trust extractor agree.
+// ETSI EN 319 412-3 clause 4.2.1 requires organizationIdentifier (2.5.4.97) for
+// legal persons, and that is the only place the identifier is written.
+//
+// Earlier releases also duplicated it into Subject.SerialNumber (2.5.4.5),
+// because go-trust's ExtractIdentity read that attribute and reported it as
+// "organization_identifier". go-trust #138 corrected this in v0.20.0 — which
+// also fixed a second site where subject_type keyed off the same attribute and
+// misclassified a conformant legal person as a natural person. Consumers must
+// therefore be on go-trust v0.20.0 or later.
 var (
 	oidOrganizationIdentifier = asn1.ObjectIdentifier{2, 5, 4, 97}
 )
