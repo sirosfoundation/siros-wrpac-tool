@@ -25,7 +25,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
     -o siros-wrpac-tool ./cmd/siros-wrpac-tool
 
 # Runtime stage
-FROM alpine:3.23
+FROM alpine:3.24
 
 WORKDIR /data
 
