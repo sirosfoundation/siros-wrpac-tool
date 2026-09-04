@@ -270,7 +270,11 @@ func Marshal(list *etsi119612.TrustStatusListType) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("tsl: marshal: %w", err)
 	}
-	out := make([]byte, 0, len(xml.Header)+len(body)+1)
+	// Grown by append rather than pre-sized: the capacity hint was three
+	// lengths added together, which CodeQL flags as an allocation size that
+	// could overflow. The hint bought nothing measurable on a document this
+	// size, and append reaches the same result without the arithmetic.
+	var out []byte
 	out = append(out, xml.Header...)
 	out = append(out, body...)
 	return append(out, '\n'), nil
