@@ -1,0 +1,110 @@
+# Release binaries for hosts that run a vendor PKCS#11 module.
+#
+# The GHCR image is a static musl binary, which cannot dlopen a glibc-linked
+# module such as YubiHSM's. A deployment whose keys live on a real token therefore
+# installs one of these instead: cgo-enabled, dynamically linked against glibc,
+# built natively per architecture on the oldest supported Ubuntu so the glibc
+# floor stays low (22.04 → glibc 2.35).
+#
+# Each binary is accompanied by SHA-256 sums and a SLSA build provenance
+# attestation, so an installer can check both what it downloaded and where it
+# was built from:
+#
+#   gh release download v0.2.0 -R sirosfoundation/siros-wrpac-tool
+#   sha256sum -c SHA256SUMS
+#   gh attestation verify siros-wrpac-tool-linux-amd64 -R sirosfoundation/siros-wrpac-tool
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+*']
+
+permissions:
+  contents: read
+
+env:
+  MODULE: github.com/sirosfoundation/siros-wrpac-tool
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-22.04 }
+          - { arch: arm64, runner: ubuntu-22.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+
+      # A tag push does not run the CI workflow, so the release gates on the
+      # tests itself. Same flags as CI minus the coverage profile.
+      - name: Test
+        run: go test -race ./...
+
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          BINARY="siros-wrpac-tool-linux-${{ matrix.arch }}"
+          go build -trimpath \
+            -ldflags "-s -w \
+              -X ${MODULE}/cmd/siros-wrpac-tool/cmd.Version=${GITHUB_REF_NAME} \
+              -X ${MODULE}/cmd/siros-wrpac-tool/cmd.Commit=${GITHUB_SHA::12} \
+              -X ${MODULE}/cmd/siros-wrpac-tool/cmd.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o "$BINARY" ./cmd/siros-wrpac-tool
+          # Proof that this is the glibc-linked build the comment above promises,
+          # not a static one that would fail to load a vendor module.
+          file "$BINARY" | grep -q 'dynamically linked'
+          ./"$BINARY" version
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: siros-wrpac-tool-linux-${{ matrix.arch }}
+          path: siros-wrpac-tool-linux-${{ matrix.arch }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # create the release and upload assets
+      id-token: write       # Sigstore keyless signing of the provenance
+      attestations: write   # store the provenance on the repository
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum siros-wrpac-tool-linux-* > SHA256SUMS && cat SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/siros-wrpac-tool-linux-*
+
+      # Creating the release publishes it, which is what the SBOM workflow
+      # listens for to attach its own artifacts.
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --repo "${GITHUB_REPOSITORY}" --clobber
+          else
+            gh release create "$TAG" dist/* \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "siros-wrpac-tool $TAG" \
+              --generate-notes
+          fi

@@ -90,6 +90,22 @@ create them. With `--pkcs11-module` no private key is written to disk. **The PIN
 is never persisted**: the register records only the name of the environment
 variable to read it from.
 
+## Installing a release
+
+Tagged releases carry Linux amd64 and arm64 binaries, `SHA256SUMS`, and a SLSA
+build provenance attestation. They are cgo-enabled and dynamically linked
+against glibc (2.35 or newer), because that is what a vendor PKCS#11 module such
+as YubiHSM's needs; the container image below is static and cannot load one.
+
+```sh
+gh release download v0.2.0 -R sirosfoundation/siros-wrpac-tool
+sha256sum -c SHA256SUMS
+gh attestation verify siros-wrpac-tool-linux-amd64 -R sirosfoundation/siros-wrpac-tool
+install -m 0755 siros-wrpac-tool-linux-amd64 /usr/local/bin/siros-wrpac-tool
+```
+
+Pin the version wherever the tool runs unattended.
+
 ## Docker
 
 ```sh
