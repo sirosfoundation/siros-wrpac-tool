@@ -44,12 +44,14 @@ var initOpts struct {
 	caKeyLabel   string
 	regKeyLabel  string
 
-	baseURL  string
-	caName   string
-	regName  string
-	org      string
-	country  string
-	validity time.Duration
+	baseURL            string
+	caName             string
+	regName            string
+	org                string
+	country            string
+	validity           time.Duration
+	crlValidity        time.Duration
+	statusListValidity time.Duration
 }
 
 var initCmd = &cobra.Command{
@@ -146,6 +148,8 @@ func runInit(_ *cobra.Command, _ []string) error {
 
 	s.Register.CAKey = caRef
 	s.Register.RegistrarKey = regRef
+	s.Register.CRLValidity = initOpts.crlValidity.String()
+	s.Register.StatusListValidity = initOpts.statusListValidity.String()
 	if err = s.Save(); err != nil {
 		return err
 	}
@@ -418,6 +422,11 @@ var publishCmd = &cobra.Command{
 	},
 }
 
+// statusListTTL is the cache hint (ttl) in the status list token. It is
+// independent of the token's validity: a consumer re-fetches this often and
+// picks up a republished list, while exp bounds how long an old one may live.
+const statusListTTL = time.Hour
+
 // publish regenerates everything served from public/.
 //
 // It is called after every mutation rather than on demand: a register that has
@@ -453,7 +462,11 @@ func publish(s *store.Store) error {
 		}
 	}
 
-	crl, err := ca.CreateCRL(revoked, time.Now().UTC(), 7*24*time.Hour)
+	crlValidity, err := s.CRLValidityDuration()
+	if err != nil {
+		return err
+	}
+	crl, err := ca.CreateCRL(revoked, time.Now().UTC(), crlValidity)
 	if err != nil {
 		return err
 	}
@@ -470,12 +483,17 @@ func publish(s *store.Store) error {
 		return err
 	}
 	defer func() { _ = regResolved.Close() }()
+	statusValidity, err := s.StatusListValidityDuration()
+	if err != nil {
+		return err
+	}
 	token, err := list.Sign(
 		s.Register.BaseURL,
 		s.Register.BaseURL+"/"+statusListFile,
 		regResolved.Signer,
 		[]*x509.Certificate{regCert, ca.Certificate},
-		time.Hour,
+		statusListTTL,
+		statusValidity,
 	)
 	if err != nil {
 		return err
@@ -585,6 +603,8 @@ func init() {
 	f.StringVar(&initOpts.org, "organization", "SIROS Foundation", "operator organization name")
 	f.StringVar(&initOpts.country, "country", "SE", "ISO 3166-1 alpha-2 country")
 	f.DurationVar(&initOpts.validity, "validity", 10*365*24*time.Hour, "CA validity")
+	f.DurationVar(&initOpts.crlValidity, "crl-validity", store.DefaultRevocationValidity, "how long each published CRL stays valid; republish more often than this")
+	f.DurationVar(&initOpts.statusListValidity, "status-list-validity", store.DefaultRevocationValidity, "how long each published status list token stays valid (exp); republish more often than this")
 	f.StringVar(&initOpts.pkcs11Module, "pkcs11-module", "", "PKCS#11 shared library; keeps both keys on a token")
 	f.StringVar(&initOpts.pkcs11Token, "pkcs11-token", "", "PKCS#11 token label (takes precedence over --pkcs11-slot)")
 	f.UintVar(&initOpts.pkcs11Slot, "pkcs11-slot", 0, "PKCS#11 slot ID")

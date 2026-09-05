@@ -6,9 +6,12 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +23,15 @@ import (
 // command flags at it. The commands read package-level option structs, so each
 // test resets them rather than inheriting another test's values.
 func newDeployment(t *testing.T) string {
+	t.Helper()
+	initOpts.crlValidity = store.DefaultRevocationValidity
+	initOpts.statusListValidity = store.DefaultRevocationValidity
+	return newDeploymentWith(t)
+}
+
+// newDeploymentWith is newDeployment with the caller's revocation validities
+// left as set.
+func newDeploymentWith(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "deployment")
 	deployDir = dir
@@ -234,6 +246,84 @@ func TestListAndPublishOnAnEmptyDeployment(t *testing.T) {
 	}
 	if err := publishCmd.RunE(nil, nil); err != nil {
 		t.Errorf("publish: %v", err)
+	}
+}
+
+// statusListClaims decodes the published status list token's payload.
+func statusListClaims(t *testing.T, dir string) map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, "public", "status-list.jwt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(strings.TrimSpace(string(raw)), ".")
+	if len(parts) != 3 {
+		t.Fatalf("status list is not a compact JWS: %d parts", len(parts))
+	}
+	body, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p map[string]any
+	if err := json.Unmarshal(body, &p); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestPublishHonoursConfiguredValidities(t *testing.T) {
+	initOpts.crlValidity = 48 * time.Hour
+	initOpts.statusListValidity = 72 * time.Hour
+	dir := newDeploymentWith(t)
+
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Register.CRLValidity != "48h0m0s" || s.Register.StatusListValidity != "72h0m0s" {
+		t.Errorf("register recorded %q / %q", s.Register.CRLValidity, s.Register.StatusListValidity)
+	}
+
+	crlRaw, err := os.ReadFile(filepath.Join(dir, "public", "crl.der"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	crl, err := x509.ParseRevocationList(crlRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := crl.NextUpdate.Sub(crl.ThisUpdate); got != 48*time.Hour {
+		t.Errorf("CRL nextUpdate-thisUpdate = %s, want 48h", got)
+	}
+
+	p := statusListClaims(t, dir)
+	iat, exp, ttl := int64(p["iat"].(float64)), int64(p["exp"].(float64)), int(p["ttl"].(float64))
+	if exp-iat != 72*3600 {
+		t.Errorf("status list exp-iat = %d, want 72h", exp-iat)
+	}
+	if ttl != 3600 {
+		t.Errorf("status list ttl = %d, want the 1h cache hint, independent of validity", ttl)
+	}
+}
+
+func TestPublishDefaultsValidityForOlderRegisters(t *testing.T) {
+	dir := newDeployment(t)
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A register written before these settings existed has neither field.
+	s.Register.CRLValidity = ""
+	s.Register.StatusListValidity = ""
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := publishCmd.RunE(nil, nil); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	p := statusListClaims(t, dir)
+	if got := int64(p["exp"].(float64)) - int64(p["iat"].(float64)); got != int64(store.DefaultRevocationValidity.Seconds()) {
+		t.Errorf("exp-iat = %d, want the default week", got)
 	}
 }
 

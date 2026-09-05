@@ -67,6 +67,15 @@ the WRPRC's status list bit. Revoking one alone leaves the party usable through
 the other. The CRL is published even when empty: "nothing is revoked" is a
 different statement from "no CRL available".
 
+**Republish at least as often as the validities you chose.** `init` records
+`--crl-validity` and `--status-list-validity` (default one week each) in the
+register, and every `publish` — including the one after `issue`, `revoke` and
+`apply` — signs with them. The status list also carries a one-hour `ttl` cache
+hint that is independent of its `exp`: consumers refetch hourly and pick up a
+republished list, while `exp` bounds how long an old one may live. A deployment
+that publishes on a schedule rather than as a daemon should run `publish` well
+inside the shorter of the two.
+
 ## Keys on a PKCS#11 token
 
 ```sh
