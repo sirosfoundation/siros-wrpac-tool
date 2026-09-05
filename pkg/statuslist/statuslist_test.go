@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRevokeSetsOnlyTheNamedIndex(t *testing.T) {
@@ -72,7 +73,7 @@ func TestEncodedListRoundTrips(t *testing.T) {
 func TestSignedListDeclaresOneBitPerEntry(t *testing.T) {
 	l := New(16)
 	key, chain := testKeyAndChain(t)
-	tok, err := l.Sign("https://r.test", "https://r.test/status-list.jwt", key, chain, 3600)
+	tok, err := l.Sign("https://r.test", "https://r.test/status-list.jwt", key, chain, time.Hour, 7*24*time.Hour)
 	if err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
@@ -97,5 +98,55 @@ func TestSignedListDeclaresOneBitPerEntry(t *testing.T) {
 	}
 	if p["sub"] != "https://r.test/status-list.jwt" {
 		t.Errorf("sub = %v, want the status list URI", p["sub"])
+	}
+}
+
+func decodePayload(t *testing.T, tok string) map[string]any {
+	t.Helper()
+	parts := strings.Split(tok, ".")
+	if len(parts) != 3 {
+		t.Fatalf("expected a compact JWS, got %d parts", len(parts))
+	}
+	body, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p map[string]any
+	if err := json.Unmarshal(body, &p); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestSignSeparatesCacheTTLFromValidity(t *testing.T) {
+	l := New(8)
+	key, chain := testKeyAndChain(t)
+	tok, err := l.Sign("https://r.test", "https://r.test/status-list.jwt", key, chain, time.Hour, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	p := decodePayload(t, tok)
+	iat, exp, ttl := int64(p["iat"].(float64)), int64(p["exp"].(float64)), int(p["ttl"].(float64))
+	if ttl != 3600 {
+		t.Errorf("ttl = %d, want 3600", ttl)
+	}
+	if got := exp - iat; got != 7*24*3600 {
+		t.Errorf("exp-iat = %d, want one week", got)
+	}
+}
+
+func TestSignCapsTTLAtValidity(t *testing.T) {
+	l := New(8)
+	key, chain := testKeyAndChain(t)
+	tok, err := l.Sign("https://r.test", "https://r.test/status-list.jwt", key, chain, time.Hour, 10*time.Minute)
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	p := decodePayload(t, tok)
+	if ttl := int(p["ttl"].(float64)); ttl != 600 {
+		t.Errorf("ttl = %d, want 600 (capped at validity)", ttl)
+	}
+	if _, err := l.Sign("https://r.test", "https://r.test/status-list.jwt", key, chain, time.Hour, 0); err == nil {
+		t.Error("zero validity should be rejected")
 	}
 }

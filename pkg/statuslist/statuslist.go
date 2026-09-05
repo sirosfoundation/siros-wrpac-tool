@@ -80,19 +80,29 @@ type statusList struct {
 
 // Sign produces a signed status list token published at uri.
 //
-// ttl tells a consumer how long it may cache the list. It is deliberately short:
-// a stale status list is how a revoked certificate keeps being accepted.
-func (l *List) Sign(issuer, uri string, key crypto.Signer, chain []*x509.Certificate, ttl time.Duration) (string, error) {
+// ttl tells a consumer how long it may cache the list; validity sets exp, the
+// point after which the token must not be accepted at all. The two are distinct
+// on purpose. A deployment that republishes on a schedule needs exp to outlast
+// the gap between runs, or the list is expired most of the time, while the cache
+// hint stays short: a stale status list is how a revoked certificate keeps being
+// accepted. ttl is capped at validity so the two never contradict each other.
+func (l *List) Sign(issuer, uri string, key crypto.Signer, chain []*x509.Certificate, ttl, validity time.Duration) (string, error) {
 	encoded, err := l.encode()
 	if err != nil {
 		return "", err
+	}
+	if validity <= 0 {
+		return "", fmt.Errorf("statuslist: validity must be positive, got %s", validity)
+	}
+	if ttl <= 0 || ttl > validity {
+		ttl = validity
 	}
 	now := time.Now().UTC()
 	return jws.Sign(MediaType, payload{
 		Issuer:     issuer,
 		Subject:    uri,
 		IssuedAt:   now.Unix(),
-		Expires:    now.Add(ttl).Unix(),
+		Expires:    now.Add(validity).Unix(),
 		TTL:        int(ttl.Seconds()),
 		StatusList: statusList{Bits: 1, List: encoded},
 	}, key, chain)

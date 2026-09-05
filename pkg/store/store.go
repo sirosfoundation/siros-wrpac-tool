@@ -72,6 +72,14 @@ type Register struct {
 	NextStatusIndex int `json:"next_status_index"`
 	// BaseURL is where this deployment publishes its CRL and status list.
 	BaseURL string `json:"base_url"`
+	// CRLValidity and StatusListValidity are Go durations ("168h") bounding
+	// how long a published CRL and status list token stay acceptable. They are
+	// deployment settings rather than publish-time flags because every caller
+	// of publish — init, issue, revoke, apply — must agree, and because the
+	// value encodes an operational promise: republish at least this often.
+	// Empty means DefaultRevocationValidity.
+	CRLValidity        string `json:"crl_validity,omitempty"`
+	StatusListValidity string `json:"status_list_validity,omitempty"`
 	// Entries is keyed by certificate serial.
 	Entries map[string]*Entry `json:"entries"`
 
@@ -80,6 +88,36 @@ type Register struct {
 	// register. Neither ever carries a PIN — see keyref.PKCS11.
 	CAKey        keyref.Ref `json:"ca_key,omitempty"`
 	RegistrarKey keyref.Ref `json:"registrar_key,omitempty"`
+}
+
+// DefaultRevocationValidity is how long a CRL or status list stays acceptable
+// when the register does not say. A week matches common CRL practice and gives
+// a scheduled republish room to fail once and be retried.
+const DefaultRevocationValidity = 7 * 24 * time.Hour
+
+// CRLValidityDuration returns the configured CRL validity, or the default.
+func (s *Store) CRLValidityDuration() (time.Duration, error) {
+	return parseValidity("crl_validity", s.Register.CRLValidity)
+}
+
+// StatusListValidityDuration returns the configured status list token
+// validity, or the default.
+func (s *Store) StatusListValidityDuration() (time.Duration, error) {
+	return parseValidity("status_list_validity", s.Register.StatusListValidity)
+}
+
+func parseValidity(field, raw string) (time.Duration, error) {
+	if raw == "" {
+		return DefaultRevocationValidity, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("store: register %s %q: %w", field, raw, err)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("store: register %s must be positive, got %q", field, raw)
+	}
+	return d, nil
 }
 
 // CAKeyRef returns the CA key reference, defaulting to the on-disk layout.

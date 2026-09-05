@@ -219,3 +219,30 @@ func testCertAndKey(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
 	}
 	return cert, key
 }
+
+func TestValiditiesDefaultAndParse(t *testing.T) {
+	s, err := Create(filepath.Join(t.TempDir(), "d"), "https://r.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []func() (time.Duration, error){s.CRLValidityDuration, s.StatusListValidityDuration} {
+		d, err := f()
+		if err != nil || d != DefaultRevocationValidity {
+			t.Errorf("empty setting: got %s, %v; want default", d, err)
+		}
+	}
+	s.Register.CRLValidity = "48h"
+	s.Register.StatusListValidity = "72h"
+	if d, err := s.CRLValidityDuration(); err != nil || d != 48*time.Hour {
+		t.Errorf("crl: got %s, %v", d, err)
+	}
+	if d, err := s.StatusListValidityDuration(); err != nil || d != 72*time.Hour {
+		t.Errorf("status list: got %s, %v", d, err)
+	}
+	for _, bad := range []string{"soon", "-1h", "0s"} {
+		s.Register.StatusListValidity = bad
+		if _, err := s.StatusListValidityDuration(); err == nil {
+			t.Errorf("%q should be rejected", bad)
+		}
+	}
+}
