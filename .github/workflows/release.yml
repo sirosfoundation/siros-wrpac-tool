@@ -92,19 +92,35 @@ jobs:
         with:
           subject-path: dist/siros-wrpac-tool-linux-*
 
-      # Creating the release publishes it, which is what the SBOM workflow
-      # listens for to attach its own artifacts.
+      # A tag with a pre-release suffix (v0.2.0-rc1) is marked as such; GitHub
+      # does not infer it from the name.
       - name: Create or update release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
+          PRERELEASE=()
+          [[ "$TAG" == *-* ]] && PRERELEASE=(--prerelease)
           if gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" > /dev/null 2>&1; then
             gh release upload "$TAG" dist/* --repo "${GITHUB_REPOSITORY}" --clobber
           else
             gh release create "$TAG" dist/* \
               --repo "${GITHUB_REPOSITORY}" \
               --title "siros-wrpac-tool $TAG" \
-              --generate-notes
+              --generate-notes "${PRERELEASE[@]}"
           fi
+
+  # A release created with GITHUB_TOKEN does not fire the `release` event for
+  # other workflows (GitHub suppresses it to prevent recursion), so the SBOM
+  # workflow's `release: published` trigger never sees ours. Call the shared
+  # workflow directly instead: it attaches to the release named by github.ref.
+  sbom:
+    needs: publish
+    uses: sirosfoundation/.github/.github/workflows/sbom.yml@main
+    with:
+      require-sbom: true
+    permissions:
+      contents: write        # attach the SBOM to the release
+      id-token: write        # Cosign keyless signing
+      security-events: write # SARIF upload — required by the reusable workflow

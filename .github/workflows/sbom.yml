@@ -1,11 +1,13 @@
 # Software bill of materials, via the shared sirosfoundation workflow.
+#
+# Runs on main only. Releases get their SBOM from release.yml, which calls the
+# same shared workflow after publishing: a release created with GITHUB_TOKEN
+# does not raise the `release` event, so a trigger here would never fire.
 name: SBOM
 
 on:
   push:
     branches: [main]
-  release:
-    types: [published]
 
 permissions:
   contents: read
