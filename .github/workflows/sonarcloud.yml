@@ -33,7 +33,17 @@ jobs:
       - name: Generate coverage report
         run: go test -tags softhsm -coverprofile=coverage.out ./...
 
+      # Dependabot pull requests do not receive repository or organization
+      # Actions secrets, so SONAR_TOKEN is empty there and the scanner exits 3.
+      # This job is a required check, so a failing scan left every Dependabot
+      # PR unmergeable. Skip the scan for them and let the job pass; the same
+      # commits are scanned on the push to main after the merge.
+      - name: Skip scan on Dependabot pull requests
+        if: github.actor == 'dependabot[bot]'
+        run: echo "::notice::SonarCloud scan skipped for a Dependabot pull request; it runs on main after merge"
+
       - name: SonarCloud Scan
+        if: github.actor != 'dependabot[bot]'
         # Pinned by hash, not by tag: GHSA-f79p-9c5r-xg88 (command injection,
         # fixed in 5.3.1) and GHSA-5xq9-5g24-4g6f (argument injection, fixed in
         # 6.0.0) both affect the v5 line, and a moving tag would let a
