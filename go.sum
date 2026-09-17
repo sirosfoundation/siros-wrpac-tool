@@ -32,8 +32,8 @@ github.com/sirosfoundation/g119612 v0.7.0 h1:aVj6iNio/z7YVW4qFZk485Pn8gvwDiW3CCI
 github.com/sirosfoundation/g119612 v0.7.0/go.mod h1:JWUPZGeKDgsS3ehs4OGEDD10oMVQIS/XWSb31MJRkMU=
 github.com/sirosfoundation/go-cryptoutil v0.5.0 h1:ByKuNjHSdlvkOzGeElh0QAku36iuymqLVvBLMY4x5as=
 github.com/sirosfoundation/go-cryptoutil v0.5.0/go.mod h1:OZi673Xmf5o2LzF/QMceptIpiB2GKYAYBfEa75ocBss=
-github.com/sirosfoundation/go-cryptoutil/pkcs11pool v0.1.0 h1:J9EoNfcydRpndiGCPNjCYEQ9vOlSSaud6dJLsT9uqQc=
-github.com/sirosfoundation/go-cryptoutil/pkcs11pool v0.1.0/go.mod h1:PwoYYR9iWEZHnzvE5IM5xayE0my3MB+pFaYvkY9Xl1Q=
+github.com/sirosfoundation/go-cryptoutil/pkcs11pool v0.1.1 h1:x6P175Ia0JwMG4wvDISI46tDv//ztkIh/P0gIFlMjxE=
+github.com/sirosfoundation/go-cryptoutil/pkcs11pool v0.1.1/go.mod h1:PwoYYR9iWEZHnzvE5IM5xayE0my3MB+pFaYvkY9Xl1Q=
 github.com/sirosfoundation/signedxml v1.4.0-siros1 h1:+d+j6AQxu9CNylGkmPbUAUdEYny6gvXZxFnuvrPViHk=
 github.com/sirosfoundation/signedxml v1.4.0-siros1/go.mod h1:qXhLkLQ7B8fg9YSTqBmWSynY9tkkEx2QsIBjMeJTGcM=
 github.com/sirupsen/logrus v1.9.4 h1:TsZE7l11zFCLZnZ+teH4Umoq5BhEIfIzfRDZ1Uzql2w=
