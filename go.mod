@@ -3,18 +3,18 @@ module github.com/sirosfoundation/siros-wrpac-tool
 go 1.26.6
 
 require (
+	github.com/beevik/etree v1.6.0
+	github.com/moov-io/signedxml v1.2.3
 	github.com/sirosfoundation/g119612 v0.7.0
-	github.com/sirosfoundation/go-cryptoutil/pkcs11pool v0.1.0
+	github.com/sirosfoundation/go-cryptoutil/pkcs11pool v0.1.1
 	github.com/spf13/cobra v1.10.2
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	github.com/beevik/etree v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/miekg/pkcs11 v1.1.2 // indirect
-	github.com/moov-io/signedxml v1.2.3 // indirect
 	github.com/russellhaering/goxmldsig v1.6.0 // indirect
 	github.com/sirosfoundation/go-cryptoutil v0.5.0 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
