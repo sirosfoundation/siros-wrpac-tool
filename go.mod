@@ -3,7 +3,7 @@ module github.com/sirosfoundation/siros-wrpac-tool
 go 1.26.6
 
 require (
-	github.com/beevik/etree v1.6.0
+	github.com/beevik/etree v1.8.0
 	github.com/moov-io/signedxml v1.2.3
 	github.com/sirosfoundation/g119612 v0.7.0
 	github.com/sirosfoundation/go-cryptoutil/pkcs11pool v0.1.1
