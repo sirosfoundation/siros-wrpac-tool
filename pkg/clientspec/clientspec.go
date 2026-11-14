@@ -120,21 +120,24 @@ func (s *Spec) ValidityDuration() (time.Duration, error) {
 // as its own transition rather than as a reason to re-issue.
 func (s *Spec) Fingerprint() string {
 	type material struct {
-		Name            string        `json:"name"`
-		Organization    string        `json:"organization"`
-		GivenName       string        `json:"given_name"`
-		Surname         string        `json:"surname"`
-		Identifier      string        `json:"identifier"`
-		Country         string        `json:"country"`
-		SupportURI      string        `json:"support_uri"`
-		Email           string        `json:"email"`
-		SubjectKind     string        `json:"subject_kind"`
-		Assurance       string        `json:"assurance"`
-		Entitlements    []string      `json:"entitlements"`
-		Provides        []Attestation `json:"provides"`
-		Validity        string        `json:"validity"`
-		PresentsThrough string        `json:"presents_through"`
-		PublicKey       string        `json:"public_key"`
+		Name         string        `json:"name"`
+		Organization string        `json:"organization"`
+		GivenName    string        `json:"given_name"`
+		Surname      string        `json:"surname"`
+		Identifier   string        `json:"identifier"`
+		Country      string        `json:"country"`
+		SupportURI   string        `json:"support_uri"`
+		Email        string        `json:"email"`
+		SubjectKind  string        `json:"subject_kind"`
+		Assurance    string        `json:"assurance"`
+		Entitlements []string      `json:"entitlements"`
+		Provides     []Attestation `json:"provides"`
+		Validity     string        `json:"validity"`
+		// omitempty is load-bearing: a direct spec (no intermediary) must
+		// hash to the SAME fingerprint as before this field existed, or the
+		// next apply re-issues and revokes every unchanged direct client.
+		PresentsThrough string `json:"presents_through,omitempty"`
+		PublicKey       string `json:"public_key"`
 	}
 
 	ents := append([]string(nil), s.Entitlements...)

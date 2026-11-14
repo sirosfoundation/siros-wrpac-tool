@@ -184,3 +184,18 @@ func TestValidityDefaultsToOneYear(t *testing.T) {
 		t.Error("expected an unparseable validity to be rejected")
 	}
 }
+
+func TestFingerprintCoversPresentsThrough(t *testing.T) {
+	// The material field's omitempty is load-bearing: a direct spec (no
+	// intermediary) serializes exactly as it did before the field existed,
+	// so the first apply after the upgrade does not re-issue and revoke
+	// every unchanged direct client. A SET intermediary does enter the
+	// fingerprint - changing it re-issues.
+	spec := Spec{Name: "Example RP", Identifier: "LEIXG-1", Country: "SE", Entitlements: []string{"urn:eudi:pid:1"}}
+	direct := spec.Fingerprint()
+	spec.PresentsThrough = "LEIXG-INTERMEDIARY-01"
+	intermediated := spec.Fingerprint()
+	if direct == intermediated {
+		t.Fatal("presenting through an intermediary must change the fingerprint")
+	}
+}
