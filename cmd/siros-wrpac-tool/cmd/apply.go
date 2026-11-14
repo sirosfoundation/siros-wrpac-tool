@@ -281,9 +281,14 @@ func mintWRPRCForSpec(s *store.Store, e *store.Entry, spec *clientspec.Spec) (st
 	}
 
 	signer := &wrprc.Signer{Chain: []*x509.Certificate{regCert, caCert}, Key: resolved.Signer}
+	var act *wrprc.Act
+	if spec.PresentsThrough != "" {
+		act = &wrprc.Act{Sub: spec.PresentsThrough}
+	}
 	return signer.Mint(wrprc.Payload{
 		Name:                 spec.Name,
 		Sub:                  spec.Identifier,
+		Act:                  act,
 		SubLegalName:         spec.Organization,
 		SubGivenName:         spec.GivenName,
 		SubFamilyName:        spec.Surname,

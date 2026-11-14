@@ -65,6 +65,14 @@ type Spec struct {
 	// the YAML file. Required: the deployment certifies a key it does not hold.
 	CSR string `yaml:"csr" json:"csr"`
 
+	// PresentsThrough is the EN 319 412-1 semantic identifier of the
+	// INTERMEDIARY this relying party presents through, if any. Per ETSI TS
+	// 119 475 V1.2.1 Table 10 (GEN-5.2.4-09) and point 14 of Annex I to CIR
+	// (EU) 2025/848, a separate WRPRC is issued for each intermediary used:
+	// the WRPRC names the intermediary in `act` while the identifier (the
+	// sub) stays the FINAL relying party. Empty means a direct presentation.
+	PresentsThrough string `yaml:"presents_through,omitempty" json:"presents_through,omitempty"`
+
 	Entitlements []string      `yaml:"entitlements" json:"entitlements"`
 	Provides     []Attestation `yaml:"provides,omitempty" json:"provides,omitempty"`
 
@@ -112,20 +120,21 @@ func (s *Spec) ValidityDuration() (time.Duration, error) {
 // as its own transition rather than as a reason to re-issue.
 func (s *Spec) Fingerprint() string {
 	type material struct {
-		Name         string        `json:"name"`
-		Organization string        `json:"organization"`
-		GivenName    string        `json:"given_name"`
-		Surname      string        `json:"surname"`
-		Identifier   string        `json:"identifier"`
-		Country      string        `json:"country"`
-		SupportURI   string        `json:"support_uri"`
-		Email        string        `json:"email"`
-		SubjectKind  string        `json:"subject_kind"`
-		Assurance    string        `json:"assurance"`
-		Entitlements []string      `json:"entitlements"`
-		Provides     []Attestation `json:"provides"`
-		Validity     string        `json:"validity"`
-		PublicKey    string        `json:"public_key"`
+		Name            string        `json:"name"`
+		Organization    string        `json:"organization"`
+		GivenName       string        `json:"given_name"`
+		Surname         string        `json:"surname"`
+		Identifier      string        `json:"identifier"`
+		Country         string        `json:"country"`
+		SupportURI      string        `json:"support_uri"`
+		Email           string        `json:"email"`
+		SubjectKind     string        `json:"subject_kind"`
+		Assurance       string        `json:"assurance"`
+		Entitlements    []string      `json:"entitlements"`
+		Provides        []Attestation `json:"provides"`
+		Validity        string        `json:"validity"`
+		PresentsThrough string        `json:"presents_through"`
+		PublicKey       string        `json:"public_key"`
 	}
 
 	ents := append([]string(nil), s.Entitlements...)
@@ -138,7 +147,7 @@ func (s *Spec) Fingerprint() string {
 		SupportURI: s.SupportURI, Email: s.Email,
 		SubjectKind: s.subjectKind(), Assurance: s.assurance(),
 		Entitlements: ents, Provides: s.Provides,
-		Validity: s.Validity,
+		Validity: s.Validity, PresentsThrough: s.PresentsThrough,
 	}
 	if s.csr != nil {
 		if der, err := x509.MarshalPKIXPublicKey(s.csr.PublicKey); err == nil {
