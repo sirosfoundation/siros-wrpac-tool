@@ -145,3 +145,46 @@ func TestSignatureIsRawRS(t *testing.T) {
 		t.Errorf("signature length = %d, want 64 (raw r||s)", len(sig))
 	}
 }
+
+func TestMintCarriesActWhenPresent(t *testing.T) {
+	// ETSI TS 119 475 V1.2.1 Table 10: a WRPRC issued for an intermediated
+	// presentation names the intermediary in act while sub stays the FINAL
+	// relying party. The token must carry both, verbatim.
+	p := providerPayload()
+	p.Act = &Act{Sub: "LEIXG-INTERMEDIARY-01"}
+	token, err := testSigner(t).Mint(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims := decodePayload(t, token)
+	act, ok := claims["act"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected the act claim in %v", claims)
+	}
+	if act["sub"] != "LEIXG-INTERMEDIARY-01" {
+		t.Fatalf("expected act.sub to carry the intermediary, got %v", act["sub"])
+	}
+	if claims["sub"] != "LEIXG-529900T8BM49AURSDO55" {
+		t.Fatalf("sub must stay the FINAL relying party, got %v", claims["sub"])
+	}
+}
+
+func TestMintOmitsActWhenDirect(t *testing.T) {
+	// A direct presentation carries no act at all - not an empty one.
+	token, err := testSigner(t).Mint(providerPayload())
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims := decodePayload(t, token)
+	if _, present := claims["act"]; present {
+		t.Fatalf("a direct presentation must not carry act, got %v", claims["act"])
+	}
+}
+
+func TestMintRequiresActSubWhenActPresent(t *testing.T) {
+	p := providerPayload()
+	p.Act = &Act{}
+	if _, err := testSigner(t).Mint(p); err == nil {
+		t.Fatal("expected an act without sub to be refused (GEN-5.2.4-09)")
+	}
+}

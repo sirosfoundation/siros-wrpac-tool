@@ -45,6 +45,9 @@ func (p *Payload) validate() error {
 	if p.Sub == "" {
 		return fmt.Errorf("wrprc: sub is required")
 	}
+	if p.Act != nil && p.Act.Sub == "" {
+		return fmt.Errorf("wrprc: act.sub is required when act is present (GEN-5.2.4-09)")
+	}
 
 	if p.IssuedAt == 0 {
 		p.IssuedAt = time.Now().UTC().Unix()

@@ -126,4 +126,17 @@ type Payload struct {
 	IssuedAt             int64                 `json:"iat"`
 	ExpiresAt            int64                 `json:"exp,omitempty"`
 	Status               *Status               `json:"status,omitempty"`
+
+	// Act is the ETSI TS 119 475 V1.2.1 Table 10 intermediary identification
+	// (GEN-5.2.4-09): the party this certificate authorizes to present on the
+	// relying party's behalf. A separate WRPRC is issued for each intermediary
+	// used (point 14 of Annex I to CIR (EU) 2025/848); the sub always names
+	// the FINAL relying party. Nil means a direct presentation.
+	Act *Act `json:"act,omitempty"`
+}
+
+// Act identifies the intermediary a WRPRC was issued for (Table 10):
+// Sub is the intermediary's EN 319 412-1 semantic identifier.
+type Act struct {
+	Sub string `json:"sub"`
 }
