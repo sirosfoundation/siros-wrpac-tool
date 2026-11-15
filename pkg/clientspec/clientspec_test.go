@@ -199,3 +199,15 @@ func TestFingerprintCoversPresentsThrough(t *testing.T) {
 		t.Fatal("presenting through an intermediary must change the fingerprint")
 	}
 }
+
+func TestFingerprintCoversPrivacyPolicyURI(t *testing.T) {
+	// Like presents_through: a SET privacy policy re-issues; an unset one
+	// hashes identically to a pre-upgrade spec (omitempty in the material).
+	spec := Spec{Name: "Example RP", Identifier: "LEIXG-1", Country: "SE", Entitlements: []string{"urn:eudi:pid:1"}}
+	without := spec.Fingerprint()
+	spec.PrivacyPolicyURI = "https://rp.example/privacy"
+	with := spec.Fingerprint()
+	if without == with {
+		t.Fatal("a privacy policy change must change the fingerprint")
+	}
+}

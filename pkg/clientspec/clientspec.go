@@ -54,7 +54,12 @@ type Spec struct {
 	Country    string `yaml:"country" json:"country"`
 
 	SupportURI string `yaml:"support_uri,omitempty" json:"support_uri,omitempty"`
-	Email      string `yaml:"email,omitempty" json:"email,omitempty"`
+	// PrivacyPolicyURI is the relying party's privacy-policy URI, carried in
+	// the WRPRC's privacy_policy claim (TS 119 475 Table 7 / B.2.8) - the
+	// wallet's user-facing link. Consumers that require the claim (the
+	// siros-verifier-core parser among them) refuse a certificate without it.
+	PrivacyPolicyURI string `yaml:"privacy_policy_uri,omitempty" json:"privacy_policy_uri,omitempty"`
+	Email            string `yaml:"email,omitempty" json:"email,omitempty"`
 
 	// SubjectKind is "legal" (default) or "natural".
 	SubjectKind string `yaml:"subject_kind,omitempty" json:"subject_kind,omitempty"`
@@ -120,19 +125,22 @@ func (s *Spec) ValidityDuration() (time.Duration, error) {
 // as its own transition rather than as a reason to re-issue.
 func (s *Spec) Fingerprint() string {
 	type material struct {
-		Name         string        `json:"name"`
-		Organization string        `json:"organization"`
-		GivenName    string        `json:"given_name"`
-		Surname      string        `json:"surname"`
-		Identifier   string        `json:"identifier"`
-		Country      string        `json:"country"`
-		SupportURI   string        `json:"support_uri"`
-		Email        string        `json:"email"`
-		SubjectKind  string        `json:"subject_kind"`
-		Assurance    string        `json:"assurance"`
-		Entitlements []string      `json:"entitlements"`
-		Provides     []Attestation `json:"provides"`
-		Validity     string        `json:"validity"`
+		Name         string `json:"name"`
+		Organization string `json:"organization"`
+		GivenName    string `json:"given_name"`
+		Surname      string `json:"surname"`
+		Identifier   string `json:"identifier"`
+		Country      string `json:"country"`
+		SupportURI   string `json:"support_uri"`
+		// omitempty is load-bearing: an unset policy must hash identically to
+		// pre-upgrade specs, or the next apply re-issues every unchanged client.
+		PrivacyPolicyURI string        `json:"privacy_policy_uri,omitempty"`
+		Email            string        `json:"email"`
+		SubjectKind      string        `json:"subject_kind"`
+		Assurance        string        `json:"assurance"`
+		Entitlements     []string      `json:"entitlements"`
+		Provides         []Attestation `json:"provides"`
+		Validity         string        `json:"validity"`
 		// omitempty is load-bearing: a direct spec (no intermediary) must
 		// hash to the SAME fingerprint as before this field existed, or the
 		// next apply re-issues and revokes every unchanged direct client.
@@ -148,7 +156,8 @@ func (s *Spec) Fingerprint() string {
 		GivenName: s.GivenName, Surname: s.Surname,
 		Identifier: s.Identifier, Country: s.Country,
 		SupportURI: s.SupportURI, Email: s.Email,
-		SubjectKind: s.subjectKind(), Assurance: s.assurance(),
+		PrivacyPolicyURI: s.PrivacyPolicyURI,
+		SubjectKind:      s.subjectKind(), Assurance: s.assurance(),
 		Entitlements: ents, Provides: s.Provides,
 		Validity: s.Validity, PresentsThrough: s.PresentsThrough,
 	}
