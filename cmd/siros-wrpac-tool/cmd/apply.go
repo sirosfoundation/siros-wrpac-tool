@@ -298,6 +298,7 @@ func mintWRPRCForSpec(s *store.Store, e *store.Entry, spec *clientspec.Spec) (st
 		ProvidesAttestations: provides,
 		SupportURI:           spec.SupportURI,
 		PrivacyPolicy:        spec.PrivacyPolicyURI,
+		SrvDescription:       spec.SrvDescriptionGroups(),
 		CertificatePolicy:    s.Register.BaseURL + "/certificate-policy",
 		Status: &wrprc.Status{StatusList: wrprc.StatusList{
 			Idx: e.StatusIndex,

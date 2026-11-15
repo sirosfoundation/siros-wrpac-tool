@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"github.com/sirosfoundation/siros-wrpac-tool/pkg/wrprc"
 	"os"
 	"path/filepath"
 	"sort"
@@ -28,6 +29,26 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+// ServiceDescription is one localized service description entry
+// (TS 119 475 Table 7's MultiLangString).
+type ServiceDescription struct {
+	Lang  string `yaml:"lang" json:"lang"`
+	Value string `yaml:"value" json:"value"`
+}
+
+// SrvDescriptionGroups returns the srv_description claim value: the explicit
+// descriptions, or one group derived from the trade name when none are set.
+func (s *Spec) SrvDescriptionGroups() [][]wrprc.MultiLangString {
+	var groups [][]wrprc.MultiLangString
+	for _, sd := range s.ServiceDescriptions {
+		groups = append(groups, []wrprc.MultiLangString{{Lang: sd.Lang, Value: sd.Value}})
+	}
+	if len(groups) == 0 {
+		groups = [][]wrprc.MultiLangString{{{Lang: "en", Value: s.Name}}}
+	}
+	return groups
+}
 
 // Attestation declares one credential type a provider is registered to issue.
 // Exactly one of VCT or DocType is set; the format follows from which.
@@ -59,7 +80,15 @@ type Spec struct {
 	// wallet's user-facing link. Consumers that require the claim (the
 	// siros-verifier-core parser among them) refuse a certificate without it.
 	PrivacyPolicyURI string `yaml:"privacy_policy_uri,omitempty" json:"privacy_policy_uri,omitempty"`
-	Email            string `yaml:"email,omitempty" json:"email,omitempty"`
+
+	// ServiceDescriptions are the relying party's localized service
+	// descriptions, carried in the WRPRC's srv_description claim (TS 119 475
+	// Table 7: an array of service groups, each an array of {lang, value}).
+	// When unset, the mint derives one group from Name: [[{en, Name}]] - the
+	// trade name is the service description for the simple registrations this
+	// tool serves.
+	ServiceDescriptions []ServiceDescription `yaml:"service_descriptions,omitempty" json:"service_descriptions,omitempty"`
+	Email               string               `yaml:"email,omitempty" json:"email,omitempty"`
 
 	// SubjectKind is "legal" (default) or "natural".
 	SubjectKind string `yaml:"subject_kind,omitempty" json:"subject_kind,omitempty"`
